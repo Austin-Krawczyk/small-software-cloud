@@ -57,6 +57,9 @@ Legend: ✅ done & deployed · 🔜 next · 🪨 large/multi-part · ⛔ deliber
 - **Cross-origin API lock** — a deployed app can't drive the platform API in the
   user's browser.
 - **Three roles**: owner / editor (use + deploy/edit) / collaborator (use).
+- **Account-free sharing** — "anyone with the link" guest access (no login), plus
+  **magic-link identity** so an invited person signs in from one email link with
+  no signup form or password. Instant link revocation.
 - **Email-on-invite** (SMTP; degrades to a local outbox when unset).
 - **Rate limiting** on login and signup.
 

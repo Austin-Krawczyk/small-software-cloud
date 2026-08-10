@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jsonError, requireProject } from "@/lib/api";
-import { appOriginFor } from "@/lib/config";
+import { signToken } from "@/lib/appauth";
+import { appOriginFor, platformOrigin } from "@/lib/config";
 import { run } from "@/lib/db";
 import { mailConfigured, sendInviteEmail } from "@/lib/mail";
 import { invitesOf, membersOf, ShareRole, shareWithEmail } from "@/lib/projects";
+
+const MAGIC_TTL_MS = 7 * 24 * 3600 * 1000;
+
+// A magic sign-in link scoped to this email that lands on the shared app.
+function magicLink(email: string, slug: string): string {
+  const token = signToken({ magic: email.trim() }, MAGIC_TTL_MS);
+  const next = encodeURIComponent(`${appOriginFor(slug)}/`);
+  return `${platformOrigin()}/api/auth/magic?token=${token}&next=${next}`;
+}
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -30,10 +40,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     void sendInviteEmail({
       to: email.trim(),
       projectName: actor!.project!.name,
-      appUrl: appOriginFor(actor!.project!.slug),
+      openUrl: magicLink(email, actor!.project!.slug),
       inviterName: actor!.user.name,
       role: shareRole,
-      needsSignup: status === "invite_pending",
     });
   }
   return NextResponse.json({ ok: true, status, emailed: mailConfigured() });

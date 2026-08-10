@@ -35,10 +35,10 @@ export function createUser(email: string, name: string, password: string): Row {
   return one("SELECT * FROM users WHERE id = ?", id)!;
 }
 
-// Find or create a user from a verified OAuth identity (linked by email). New
-// OAuth users get an empty password hash, which can never satisfy verifyPassword
-// — they sign in with the provider (or set a password later via reset).
-export function upsertOAuthUser(email: string, name: string): Row {
+// Find or create a user by verified email (OAuth, or a magic sign-in link). New
+// users get an empty password hash, which can never satisfy verifyPassword —
+// they sign in via the provider/link (or set a password later via reset).
+export function findOrCreateUserByEmail(email: string, name: string): Row {
   const existing = one("SELECT * FROM users WHERE email = ?", email.trim());
   if (existing) return existing;
   const id = newId();

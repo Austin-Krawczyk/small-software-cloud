@@ -65,28 +65,24 @@ function logOutbox(m: Mail, note: string): void {
 export interface InviteOpts {
   to: string;
   projectName: string;
-  appUrl: string;
+  openUrl: string; // a magic link: clicking it signs the recipient in and opens the app
   inviterName: string;
   role: "editor" | "collaborator";
-  needsSignup: boolean;
 }
 
 export function sendInviteEmail(o: InviteOpts): Promise<void> {
   const verb = o.role === "editor" ? "edit" : "use";
   const subject = `${o.inviterName} shared "${o.projectName}" with you`;
-  const signupLine = o.needsSignup
-    ? "You'll create a quick Small Software Cloud account the first time you open it."
-    : "It's now in your Small Software Cloud dashboard.";
   const text =
     `${o.inviterName} invited you to ${verb} "${o.projectName}" on Small Software Cloud.\n\n` +
-    `Open it: ${o.appUrl}\n\n${signupLine}\n\nDashboard: ${platformOrigin()}\n`;
+    `Open it (no password needed — this link signs you in):\n${o.openUrl}\n`;
   const html =
     `<div style="font-family:system-ui;max-width:32rem">` +
     `<p><b>${escapeHtml(o.inviterName)}</b> invited you to ${verb} ` +
     `<b>${escapeHtml(o.projectName)}</b> on Small Software Cloud.</p>` +
-    `<p><a href="${o.appUrl}" style="display:inline-block;background:#2c6bed;color:#fff;` +
+    `<p><a href="${o.openUrl}" style="display:inline-block;background:#2c6bed;color:#fff;` +
     `padding:.5rem 1rem;border-radius:8px;text-decoration:none">Open ${escapeHtml(o.projectName)}</a></p>` +
-    `<p style="color:#667">${signupLine}</p></div>`;
+    `<p style="color:#667">No password needed — this link signs you in. It works just for you.</p></div>`;
   return sendMail({ to: o.to, subject, text, html });
 }
 
