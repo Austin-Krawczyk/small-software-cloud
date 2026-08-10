@@ -6,14 +6,14 @@
 //   request → valid app cookie? → still a member? → wake app → route
 //
 // The app cookie is minted by the platform handoff (see /api/app-access and
-// /_appauth/callback). A missing/expired cookie bounces to the platform origin
+// /appauth/callback). A missing/expired cookie bounces to the platform origin
 // to (re)authenticate. The signed-in user's email is forwarded as
 // X-SmallSoftware-User so apps can personalize without touching credentials.
 import fs from "node:fs";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import {
-  APP_COOKIE, APP_HOST, appOriginFor, appSlugFromHost, platformOrigin,
+  APP_COOKIE, APP_HOST, appOriginFor, platformOrigin,
 } from "@/lib/config";
 import { getProjectBySlug, one, roleFor, Row } from "@/lib/db";
 import { verifyClaim } from "@/lib/appauth";
@@ -41,9 +41,11 @@ function page(title: string, body: string, status: number): NextResponse {
   );
 }
 
-function toAuth(req: NextRequest, slug: string): NextResponse {
-  // Bounce to the platform origin to (re)authenticate, then return here.
-  const ret = `${appOriginFor(slug)}${req.nextUrl.pathname}${req.nextUrl.search}`;
+function toAuth(req: NextRequest, slug: string, subPath: string): NextResponse {
+  // Bounce to the platform origin to (re)authenticate, then return here. Rebuild
+  // the *original* app URL from subPath — req.nextUrl.pathname is the internal
+  // /gateway/{slug} rewrite target, which must not leak into the return URL.
+  const ret = `${appOriginFor(slug)}/${subPath}${req.nextUrl.search}`;
   const dest = new URL(`${platformOrigin()}/api/app-access`);
   dest.searchParams.set("slug", slug);
   dest.searchParams.set("return", ret);
@@ -55,26 +57,28 @@ function toAuth(req: NextRequest, slug: string): NextResponse {
 async function gateway(req: NextRequest, ctx: { params: Promise<{ slug: string; path?: string[] }> }) {
   initPlatform();
 
-  // Defense in depth: this route must only ever serve an app's own origin.
-  // A direct hit on the platform origin (no subdomain) is refused.
-  if (!appSlugFromHost(req.headers.get("host"))) {
-    return new NextResponse("Not found", { status: 404 });
-  }
-
   const { slug, path: pathParts } = await ctx.params;
   const subPath = (pathParts ?? []).join("/");
+
+  // Defense in depth: this route only serves an app's own origin. Middleware
+  // stamps x-scloud-slug (and strips any client-supplied value) when routing an
+  // app subdomain; a direct hit on the platform origin never carries it, so it
+  // is refused rather than served same-origin with the dashboard.
+  if (req.headers.get("x-scloud-slug") !== slug) {
+    return new NextResponse("Not found", { status: 404 });
+  }
 
   const project = getProjectBySlug(slug);
   if (!project) return page("Not found", "No application lives at this address.", 404);
 
   const claim = verifyClaim(req.cookies.get(APP_COOKIE)?.value);
-  if (!claim || claim.s !== slug) return toAuth(req, slug);
+  if (!claim || claim.s !== slug) return toAuth(req, slug, subPath);
 
   const role = roleFor(project.id, claim.u);
-  if (!role) return toAuth(req, slug); // membership revoked since the cookie was minted
+  if (!role) return toAuth(req, slug, subPath); // membership revoked since the cookie was minted
 
   const user = one("SELECT * FROM users WHERE id = ?", claim.u);
-  if (!user) return toAuth(req, slug);
+  if (!user) return toAuth(req, slug, subPath);
 
   let fresh: Row;
   try {

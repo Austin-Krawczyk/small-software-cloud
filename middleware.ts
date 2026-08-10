@@ -1,13 +1,17 @@
 // Host-based routing. Deployed apps are served on their own origin
 // ({slug}.BASE_HOST); the platform (dashboard + API) is on BASE_HOST itself.
 //
-// This middleware only rewrites URLs by Host — no crypto, no DB — so it stays
-// edge-safe. All auth/proxy logic lives in Node route handlers it points to.
+// Next rewrites overwrite the request's Host header with the server's bind
+// host, so downstream handlers can't recover the app subdomain from Host.
+// Instead we stamp the resolved slug into a trusted request header the gateway
+// keys off. This middleware only does string work — no crypto, no DB — so it
+// stays edge-safe; all auth/proxy logic lives in the Node handlers it targets.
 import { NextRequest, NextResponse } from "next/server";
 
 // Kept in sync with lib/config.ts appSlugFromHost (config can't be imported
 // here without pulling Node-only modules into the edge runtime).
 const BASE_HOST = process.env.SCLOUD_BASE_HOST ?? "localhost:3000";
+const SLUG_HEADER = "x-scloud-slug";
 
 function appSlug(host: string | null): string | null {
   if (!host) return null;
@@ -22,21 +26,32 @@ function appSlug(host: string | null): string | null {
 }
 
 export function middleware(req: NextRequest) {
-  const slug = appSlug(req.headers.get("host"));
-  if (!slug) return NextResponse.next(); // platform origin — serve normally
+  const host = req.headers.get("host");
+  const slug = appSlug(host);
 
-  // Rewrite is internal and does not re-run middleware, so no re-entry guard is
-  // needed — every app-origin path maps straight to the gateway (or the auth
-  // callback), and app paths that happen to start with /gateway are preserved.
-  const url = req.nextUrl.clone();
-  if (url.pathname === "/__scloud_auth") {
-    url.pathname = "/appauth/callback"; // token → app-session cookie
-  } else {
-    url.pathname = `/gateway/${slug}${url.pathname === "/" ? "" : url.pathname}`;
+  // Strip any client-supplied slug header so it can only ever be set here.
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.delete(SLUG_HEADER);
+
+  if (!slug) {
+    return NextResponse.next({ request: { headers: requestHeaders } });
   }
-  return NextResponse.rewrite(url);
+
+  requestHeaders.set(SLUG_HEADER, slug);
+  const { pathname } = req.nextUrl;
+  const url = req.nextUrl.clone();
+  url.pathname =
+    pathname === "/__scloud_auth"
+      ? "/appauth/callback" // token → app-session cookie
+      : `/gateway/${slug}${pathname === "/" ? "" : pathname}`;
+  return NextResponse.rewrite(url, { request: { headers: requestHeaders } });
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  // Skip Next internals and the internal rewrite targets. Excluding /gateway
+  // and /appauth means the rewrite doesn't re-enter middleware (which would
+  // strip the header we just set), and a browser navigation straight to
+  // /gateway/… — which can't set the header — falls through to the gateway's
+  // guard and is refused.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|gateway/|appauth/).*)"],
 };

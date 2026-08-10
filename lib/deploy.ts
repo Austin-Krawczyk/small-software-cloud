@@ -122,23 +122,26 @@ async function startInstance(
   const port = await freePort();
   const pid = await getRunner().start(project.id, result, port, envMap(project.id));
   log("✓ Application started");
-  await waitHealthy(port, pid);
+  await waitHealthy(project.id, port, pid);
   log("✓ Health check passed");
   return { port, pid };
 }
 
 // A real health check: keep probing until the app answers with a non-5xx
-// status. Fail fast if the process dies (crash-on-boot), and treat a server
+// status. Fail fast if the instance dies (crash-on-boot), and treat a server
 // that only ever returns 5xx as unhealthy rather than "running but broken".
-async function waitHealthy(port: number, pid: number | null): Promise<void> {
+// Works for both runners: a dead subprocess or an exited container both make
+// isRunning() false.
+async function waitHealthy(projectId: string, port: number, pid: number | null): Promise<void> {
   const runner = getRunner();
-  const canWatchPid = runner.name === "subprocess" && pid != null;
   const deadline = Date.now() + HEALTH_TIMEOUT_MS;
   let detail = "no response";
+  let grace = 3; // allow a moment for the instance to come up before trusting isRunning
   while (Date.now() < deadline) {
-    if (canWatchPid && !runner.isRunning(pid)) {
+    if (grace <= 0 && !runner.isRunning(projectId, pid)) {
       throw new BuildError("Application exited on startup — see the output below.");
     }
+    grace--;
     try {
       const res = await fetch(`http://${APP_HOST}:${port}/`, { signal: AbortSignal.timeout(3000) });
       if (res.status < 500) return; // reachable and not erroring
@@ -177,7 +180,7 @@ export async function ensureRunning(project: Row): Promise<Row> {
 
   const alive = (p: Row) =>
     p.status === "running" &&
-    (p.app_type === "static" || getRunner().isRunning(p.pid));
+    (p.app_type === "static" || getRunner().isRunning(p.id, p.pid));
 
   if (alive(project)) return project;
 
@@ -212,8 +215,10 @@ export function initPlatform(): void {
   g.__scloud_init = true;
   ensureDirs();
 
-  // Platform restart: child processes are gone; mark apps stopped so the
-  // proxy transparently wakes them on the next request.
+  // Platform restart: reconcile the runner (remove leftover app containers),
+  // then mark apps stopped so the proxy transparently wakes them on the next
+  // request.
+  try { getRunner().resetAll(); } catch {}
   run("UPDATE projects SET pid=NULL, port=NULL, status='stopped' WHERE status='running'");
   run(
     "UPDATE deployments SET status='failed', completed_at=? WHERE status IN ('building','deploying')",

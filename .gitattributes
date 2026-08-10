@@ -1,0 +1,9 @@
+# Shell scripts and server config must use LF so they run on the Linux VPS,
+# regardless of the OS they were committed from.
+*.sh            text eol=lf
+deploy/Caddyfile            text eol=lf
+deploy/*.service            text eol=lf
+deploy/*.env.example        text eol=lf
+
+# Everything else: normalize to LF in the repo.
+* text=auto eol=lf

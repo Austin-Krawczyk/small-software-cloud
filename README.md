@@ -12,7 +12,7 @@ Kubernetes, IAM, DNS, or SSL. The MVP demonstrates the complete loop:
 Create → Deploy → Access → Share
 ```
 
-## Running the platform
+## Running the platform (local dev)
 
 Requirements: Node.js 22+ (uses the built-in `node:sqlite`), git.
 Optional: Python 3.10+ (to deploy Python apps), Docker (for container isolation).
@@ -23,6 +23,19 @@ npm run dev        # http://localhost:3000
 ```
 
 Everything the platform stores lives in `./data` — delete it for a fresh install.
+
+## Deploying to a server
+
+See **[DEPLOY.md](DEPLOY.md)** for a one-command setup on a single Ubuntu VPS
+(Caddy + HTTPS, systemd, Docker-based app runner, persistent data). Verify any
+deployment — or just the local build — with the end-to-end test:
+
+```bash
+npm run build && bash scripts/e2e-test.sh
+```
+
+It deploys a sample Node app, runs it (in Docker where available), health-checks
+it, and fetches it through the platform proxy.
 
 ## The 5-minute demo
 

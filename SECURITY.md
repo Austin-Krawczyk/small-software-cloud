@@ -32,23 +32,39 @@ under the platform's user account**. That means a malicious app could:
 **Therefore: the subprocess runner is for trusted/dev use.** It exists so the
 product loop works anywhere; it is not a sandbox.
 
-## The path to production-grade (already shaped in the code)
+## The Docker runner (production MVP) — and its limits
 
-`lib/runner.ts` defines a `Runner` interface with two implementations. When
-Docker is available it is selected automatically and provides the next tier:
+`lib/runner.ts` defines a `Runner` interface with two implementations. On the
+production VPS (see [DEPLOY.md](DEPLOY.md)) Docker is present, so the
+**DockerRunner is selected automatically**. Each app runs:
 
-- container per app (`--user 1000:1000`, `--security-opt no-new-privileges`)
-- `--memory 256m --cpus 0.5 --pids-limit 128`
-- only the app's own build dir mounted; port published to loopback only
+- in its own container, as a **non-root** user matching the build files' uid,
+  with `--security-opt no-new-privileges`
+- under hard limits: `--memory 256m --cpus 0.5 --pids-limit 128`
+- with only its own build folder bind-mounted and only its port published to
+  **loopback** (reached solely by the platform proxy)
 
-Beyond that, the same interface accommodates gVisor/Firecracker or remote
-execution hosts without touching deploy, proxy, or UI code. Other planned
+**This is MVP-level isolation, NOT hardened multi-tenant security.** Be explicit
+about what it does *not* yet guarantee:
+
+- Apps share the host **Docker daemon and kernel** — a kernel/container escape
+  would cross the boundary. This is not a VM/microVM sandbox.
+- Apps have **outbound network access** by default (no per-app egress policy).
+- The build folder is bind-mounted **read-write**, and the control-plane user is
+  in the `docker` group (which is root-equivalent on the host).
+
+**Therefore: run only trusted small-team code on a shared instance.** Do not
+host arbitrary untrusted third-party apps together yet.
+
+Beyond that, the same `Runner` interface accommodates gVisor/Firecracker or
+remote execution hosts without touching deploy, proxy, or UI code. Planned
 hardening, in rough order of value:
 
 1. Per-app outbound network policy (default-deny for containers).
-2. Encryption-at-rest for app env vars (they are plaintext in SQLite today; the platform secret already lives outside the DB).
-3. Rate limiting + login throttling on the platform API.
-4. Scanning/validation of uploaded repositories beyond size and zip-traversal checks.
+2. A stronger sandbox (gVisor/Firecracker microVMs) for untrusted multi-tenant code.
+3. Encryption-at-rest for app env vars (they are plaintext in SQLite today; the platform secret already lives outside the DB).
+4. Rate limiting + login throttling on the platform API.
+5. Scanning/validation of uploaded repositories beyond size and zip-traversal checks.
 
 Already done from the original roadmap: per-origin app isolation with a signed
 session handoff (`/api/app-access` → `{app}/__scloud_auth`), cross-origin

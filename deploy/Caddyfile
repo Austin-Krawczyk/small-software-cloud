@@ -1,0 +1,26 @@
+# Caddy reverse proxy for Small Software Cloud.
+#
+# Terminates HTTPS for the platform apex AND every app subdomain, forwarding
+# everything to the control plane on loopback:3000. The control plane routes by
+# Host header (dashboard vs. app), so Caddy needs no per-app config.
+#
+# Wildcard certificates normally require a DNS-challenge plugin. We avoid that
+# with on-demand TLS: Caddy issues a certificate the first time a hostname is
+# visited, gated by the platform's /api/tls-check so certs are only minted for
+# real app subdomains. SCLOUD_DOMAIN / SCLOUD_EMAIL come from the environment
+# (set via the systemd drop-in that setup-server.sh writes).
+
+{
+	email {$SCLOUD_EMAIL}
+	on_demand_tls {
+		ask http://127.0.0.1:3000/api/tls-check
+	}
+}
+
+{$SCLOUD_DOMAIN}, *.{$SCLOUD_DOMAIN} {
+	tls {
+		on_demand
+	}
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:3000
+}

@@ -5,7 +5,12 @@ import fs from "node:fs";
 import path from "node:path";
 
 export const BASE_DIR = process.cwd();
-export const DATA_DIR = path.join(BASE_DIR, "data");
+// Persistent state. In production point SCLOUD_DATA_DIR at a durable path
+// outside the code checkout (e.g. /var/lib/small-software-cloud) so the DB,
+// builds, and logs survive code redeploys. Defaults to ./data for local dev.
+export const DATA_DIR = process.env.SCLOUD_DATA_DIR
+  ? path.resolve(process.env.SCLOUD_DATA_DIR)
+  : path.join(BASE_DIR, "data");
 export const BUILDS_DIR = path.join(DATA_DIR, "builds"); // one folder per project
 export const UPLOADS_DIR = path.join(DATA_DIR, "uploads"); // uploaded zips
 export const APP_LOGS_DIR = path.join(DATA_DIR, "applogs"); // stdout of running apps
@@ -41,6 +46,10 @@ export const APP_PROTO = process.env.SCLOUD_PROTO ?? "http";
 export const platformOrigin = () => `${APP_PROTO}://${BASE_HOST}`;
 export const appHostFor = (slug: string) => `${slug}.${BASE_HOST}`;
 export const appOriginFor = (slug: string) => `${APP_PROTO}://${slug}.${BASE_HOST}`;
+export const baseHostname = () => BASE_HOST.split(":")[0].toLowerCase();
+
+// Mark cookies Secure when the platform is served over HTTPS (production).
+export const COOKIE_SECURE = APP_PROTO === "https";
 
 // Bearer session cookie for an app's own origin, and the short-lived handoff
 // token that mints it. Both are HMAC-signed with the platform secret.

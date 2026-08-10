@@ -1,0 +1,30 @@
+# systemd unit for the Small Software Cloud control plane.
+# Install to /etc/systemd/system/small-software-cloud.service
+#
+# The control plane runs directly as a Node process (NOT in a container); only
+# the apps it deploys run in Docker. It talks to the Docker daemon via the
+# docker group, so the service user must be a member of that group.
+
+[Unit]
+Description=Small Software Cloud control plane
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=smallcloud
+Group=smallcloud
+SupplementaryGroups=docker
+WorkingDirectory=/opt/small-software-cloud
+EnvironmentFile=/etc/small-software-cloud.env
+ExecStart=/usr/bin/npm run start
+Restart=on-failure
+RestartSec=5
+
+# Let the app write only its persistent data directory.
+ReadWritePaths=/var/lib/small-software-cloud
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

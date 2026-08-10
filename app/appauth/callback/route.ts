@@ -4,11 +4,13 @@
 // exchanges it for an app-scoped session cookie. That cookie is host-only to
 // this app's origin, so it never travels to the platform or to other apps.
 import { NextRequest, NextResponse } from "next/server";
-import { APP_COOKIE, APP_SESSION_TTL_MS, appOriginFor, appSlugFromHost } from "@/lib/config";
+import { APP_COOKIE, APP_SESSION_TTL_MS, COOKIE_SECURE, appOriginFor } from "@/lib/config";
 import { signClaim, verifyClaim } from "@/lib/appauth";
 
 export async function GET(req: NextRequest) {
-  const slug = appSlugFromHost(req.headers.get("host"));
+  // Middleware stamps the resolved slug (see middleware.ts); Host is unreliable
+  // after the rewrite, so trust the header it set.
+  const slug = req.headers.get("x-scloud-slug");
   if (!slug) return new NextResponse("Not found", { status: 404 });
 
   const claim = verifyClaim(req.nextUrl.searchParams.get("token"));
@@ -23,6 +25,7 @@ export async function GET(req: NextRequest) {
   res.cookies.set(APP_COOKIE, signClaim({ u: claim.u, s: slug }, APP_SESSION_TTL_MS), {
     httpOnly: true,
     sameSite: "lax",
+    secure: COOKIE_SECURE,
     maxAge: APP_SESSION_TTL_MS / 1000,
     path: "/",
     // No domain attribute → host-only to this app's origin.

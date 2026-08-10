@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { claimInvites, createSession, verifyPassword } from "@/lib/auth";
-import { SESSION_COOKIE, SESSION_TTL_MS } from "@/lib/config";
+import { COOKIE_SECURE, SESSION_COOKIE, SESSION_TTL_MS } from "@/lib/config";
 import { one } from "@/lib/db";
 import { initPlatform } from "@/lib/deploy";
 import { jsonError } from "@/lib/api";
@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
   claimInvites(user.id, user.email);
   const res = NextResponse.json({ id: user.id, name: user.name, email: user.email });
   res.cookies.set(SESSION_COOKIE, createSession(user.id), {
-    httpOnly: true, sameSite: "lax", maxAge: SESSION_TTL_MS / 1000, path: "/",
+    httpOnly: true, sameSite: "lax", secure: COOKIE_SECURE, maxAge: SESSION_TTL_MS / 1000, path: "/",
   });
   return res;
 }
