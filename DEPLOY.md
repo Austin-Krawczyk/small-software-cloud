@@ -127,6 +127,20 @@ systemctl status small-software-cloud
 sudo bash deploy/update.sh
 ```
 
+### Automatic deploys (optional)
+
+`setup-server.sh` installs a **pull-based auto-update timer** that checks the
+tracked branch on GitHub every ~5 minutes and runs `update.sh` only when there
+are new commits — so pushing to `main` deploys itself, with no secrets or
+inbound access. Manage it with:
+
+```bash
+sudo bash deploy/install-autoupdate.sh        # install/enable (setup does this)
+systemctl start small-software-cloud-update   # deploy right now if there are changes
+journalctl -u small-software-cloud-update -f   # watch what it does
+systemctl disable --now small-software-cloud-update.timer  # turn it off
+```
+
 - **Backups:** the entire platform state is one folder — back up
   `/var/lib/small-software-cloud` (stop the service first for a consistent copy,
   or copy the SQLite DB with `sqlite3 .backup`).

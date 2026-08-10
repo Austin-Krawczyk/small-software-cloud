@@ -1,0 +1,12 @@
+# Oneshot service that pulls & redeploys if the branch has new commits.
+# Triggered by small-software-cloud-update.timer. Install via install-autoupdate.sh.
+
+[Unit]
+Description=Small Software Cloud auto-update (pull & redeploy if changed)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Invoked via bash so the script's executable bit doesn't matter.
+ExecStart=/bin/bash /opt/small-software-cloud/deploy/auto-update.sh

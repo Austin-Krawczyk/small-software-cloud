@@ -113,6 +113,9 @@ cd "$INSTALL_DIR"
 sudo -u "$SERVICE_USER" npm ci
 sudo -u "$SERVICE_USER" npm run build
 
+log "Installing auto-update timer"
+bash "$SCRIPT_DIR/install-autoupdate.sh" || echo "  (auto-update install skipped)"
+
 log "Starting services"
 systemctl daemon-reload
 systemctl enable --now small-software-cloud
