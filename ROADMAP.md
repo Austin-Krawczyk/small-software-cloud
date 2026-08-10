@@ -41,6 +41,14 @@ Legend: ✅ done & deployed · 🔜 next · 🪨 large/multi-part · ⛔ deliber
 - **Managed SQLite database** — one-click attach, injected as `DATABASE_URL` /
   `SCLOUD_DATABASE_PATH`, persisted in durable storage, isolated per project.
 
+**Reliability**
+- **Password reset** — signed, single-use, 30-min token by email; resetting
+  signs the user out everywhere.
+- **Automated daily backups** — consistent snapshot of the whole data dir
+  (SQLite via `VACUUM INTO`), pruned to the newest 7, on a systemd timer.
+- **Automated tests** (`npm test`, node:test) over the security-relevant logic;
+  `update.sh` runs them and aborts the deploy if they fail.
+
 **Auth & sharing**
 - Email/password auth (scrypt), server-side sessions, and bearer **API tokens**
   for the CLI/agents.
@@ -78,7 +86,7 @@ effort/risk notes included so priorities are legible.
 | 🔜 **Org/team model** | High | Sharing that scales past a single owner: teams own projects, member management at the org level. A real data-model change (~a day), fully testable. |
 | 🔜 Ownership transfer / co-owners | Medium | Small once the membership model is richer. |
 | 🔜 Google/GitHub OAuth + SSO | High | `lib/auth.ts` is the single swap point; architected for it. |
-| 🔜 Password reset + email verification | Medium | Cheap now that email exists. |
+| 🔜 Email verification | Medium | Password reset ✅ done; verification still open. |
 | 🔜 Audit log | Low–Med | Who deployed/shared/accessed what. |
 
 ### 3. Secure execution of untrusted code — 🪨 the big rock
@@ -95,9 +103,8 @@ This is what turns "great for trusted teams" into "a public cloud."
 |---|---|
 | 🔜 Deployment history + rollback | Needs build-artifact retention (today builds are ephemeral). |
 | 🔜 Real-time log streaming | Currently 2s polling. |
-| 🔜 Automated backups of the data dir | One folder holds everything; a nightly copy is a full backup. |
 | 🔜 Concurrency limits / port-pool management | Cap simultaneous running apps. |
-| 🔜 Automated test suite | Everything is currently verified by scripted end-to-end checks. |
+| 🔜 Broaden test coverage | Unit suite ✅ exists; add integration/deploy-path tests. |
 
 ---
 

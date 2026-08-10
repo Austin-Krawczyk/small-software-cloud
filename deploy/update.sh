@@ -17,8 +17,13 @@ cd "$INSTALL_DIR"
 echo "==> Pulling latest code"
 sudo -u "$SERVICE_USER" git pull --ff-only
 
-echo "==> Installing dependencies and building"
+echo "==> Installing dependencies"
 sudo -u "$SERVICE_USER" npm ci
+
+echo "==> Running tests (deploy aborts if they fail — the running app stays up)"
+sudo -u "$SERVICE_USER" npm test
+
+echo "==> Building"
 sudo -u "$SERVICE_USER" npm run build
 
 echo "==> Restarting control plane"
