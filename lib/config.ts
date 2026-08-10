@@ -28,8 +28,17 @@ export const IDLE_STOP_MS = 30 * 60 * 1000;
 
 export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 export const MAX_PROJECT_BYTES = 200 * 1024 * 1024;
+export const MAX_ARCHIVE_ENTRIES = 20000;
 export const BUILD_TIMEOUT_MS = 5 * 60 * 1000;
 export const HEALTH_TIMEOUT_MS = 60 * 1000;
+
+// Container images for building/running apps, and the resource ceiling for the
+// throwaway build container. Builds run in this sandbox (see lib/sandbox.ts) so
+// untrusted install scripts can't touch the control plane's data or secrets.
+export const NODE_IMAGE = process.env.SCLOUD_NODE_IMAGE ?? "node:22-slim";
+export const PYTHON_IMAGE = process.env.SCLOUD_PYTHON_IMAGE ?? "python:3.12-slim";
+export const BUILD_MEMORY = process.env.SCLOUD_BUILD_MEMORY ?? "1g";
+export const BUILD_CPUS = process.env.SCLOUD_BUILD_CPUS ?? "1";
 
 export const SESSION_COOKIE = "scloud_session";
 export const SESSION_TTL_MS = 14 * 24 * 3600 * 1000;

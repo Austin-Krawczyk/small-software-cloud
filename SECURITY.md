@@ -14,7 +14,9 @@ stronger than they are.
 | Access control on every request | The gateway validates a signed, app-scoped session cookie and re-checks project membership before any byte is proxied — so un-sharing takes effect immediately. Deployed apps never see platform credentials |
 | Platform secrets are not exposed to apps | Child processes get a minimal environment (`PORT`, `HOST`, temp dirs, runtime path) plus only the owner-configured env vars — the platform's own env and session secret are **not** inherited (verified: an app cannot read `SCLOUD_*`) |
 | App config/secrets are separate from platform config | Per-app env vars live in their own table, are owner-only over the API, and are injected at process start; reserved launch keys (`PORT`, `PATH`, …) can't be overridden (`lib/runner.ts`) |
-| Apps can't read each other's builds via the proxy | Static serving is jailed to the project's build dir (path-resolution check); uploads are validated against zip path traversal |
+| Apps can't read each other's builds via the proxy | Static serving is jailed to the project's build dir (path-resolution check) |
+| **Uploaded archives are extracted safely** | Zips are unpacked entry-by-entry (`lib/builder.ts`): path traversal is rejected with a correct boundary check, symlink entries are refused and no symlinks are ever created, and declared uncompressed size / entry count are capped **before** writing (zip-bomb guard) |
+| **Builds run in an isolated container** | On a Docker host, `npm install`/build run inside a throwaway container that mounts **only** the project's build dir — no platform data dir, database, secret, or env (`lib/sandbox.ts`). So a malicious dependency's install script can't read the control plane's secrets |
 | A broken app is reported as failed, not "running" | Health checks reject 5xx responses and fail fast when the process exits on boot, surfacing the app's own output in the deploy log (`lib/deploy.ts`) |
 | Resource ceilings exist | Upload ≤ 50 MB, project ≤ 200 MB, build timeout 5 min, health-check timeout 60 s, idle apps stopped after 30 min |
 | No privileged execution paths | The platform never runs user code with elevated rights, never mounts the Docker socket into apps, and there is no "run as root" option |
@@ -50,8 +52,13 @@ about what it does *not* yet guarantee:
 - Apps share the host **Docker daemon and kernel** — a kernel/container escape
   would cross the boundary. This is not a VM/microVM sandbox.
 - Apps have **outbound network access** by default (no per-app egress policy).
+  The build container also has network (npm/pip need the registry), so build
+  code can still phone out — it just can't reach the platform's secrets.
 - The build folder is bind-mounted **read-write**, and the control-plane user is
   in the `docker` group (which is root-equivalent on the host).
+- Fetching source (git clone, unzip) runs on the host, not in a container — this
+  moves files but does not execute project code (clone is `--depth 1`, no
+  submodule recursion; archives are extracted as plain files only).
 
 **Therefore: run only trusted small-team code on a shared instance.** Do not
 host arbitrary untrusted third-party apps together yet.

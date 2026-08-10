@@ -18,7 +18,9 @@ import { execFileSync, spawn, SpawnOptions } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
-import { APP_HOST, APP_LOGS_DIR, APP_PORT_END, APP_PORT_START } from "./config";
+import {
+  APP_HOST, APP_LOGS_DIR, APP_PORT_END, APP_PORT_START, NODE_IMAGE, PYTHON_IMAGE,
+} from "./config";
 import { BuildResult, venvPython } from "./builder";
 
 export class RunError extends Error {}
@@ -147,7 +149,7 @@ class DockerRunner implements Runner {
     const st = fs.statSync(result.buildDir);
     const user = `${st.uid}:${st.gid}`;
 
-    const image = result.appType === "python" ? "python:3.12-slim" : "node:22-slim";
+    const image = result.appType === "python" ? PYTHON_IMAGE : NODE_IMAGE;
     const inner = this.launchCmd(result);
 
     // Base env: bind to all interfaces INSIDE the container so the published

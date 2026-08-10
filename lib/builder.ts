@@ -14,9 +14,10 @@ import path from "node:path";
 import { promisify } from "node:util";
 import AdmZip from "adm-zip";
 import {
-  BUILD_TIMEOUT_MS, MAX_PROJECT_BYTES, SAMPLES_DIR, UPLOADS_DIR,
+  BUILD_TIMEOUT_MS, MAX_ARCHIVE_ENTRIES, MAX_PROJECT_BYTES, SAMPLES_DIR, UPLOADS_DIR,
 } from "./config";
 import { Row } from "./db";
+import { npmInSandbox } from "./sandbox";
 
 const execFileP = promisify(execFile);
 
@@ -101,15 +102,44 @@ export async function fetchSource(project: Row, dest: string, log: Log): Promise
   unwrapSingleFolder(dest);
 }
 
+// Extract an uploaded zip safely. We extract entries by hand rather than using
+// extractAllTo so we control exactly what lands on disk:
+//   • path traversal — reject anything resolving outside dest (with a correct
+//     boundary check, so a sibling like `<dest>-evil` can't sneak through);
+//   • symlinks — reject symlink entries and never create symlinks, so no entry
+//     can redirect a later write outside the folder;
+//   • zip bombs — sum the declared uncompressed sizes and refuse before writing.
 function extractZip(zipPath: string, dest: string): void {
   const zip = new AdmZip(zipPath);
-  for (const entry of zip.getEntries()) {
-    const target = path.resolve(dest, entry.entryName);
-    if (!target.startsWith(path.resolve(dest))) {
+  const entries = zip.getEntries();
+  const root = path.resolve(dest);
+
+  if (entries.length > MAX_ARCHIVE_ENTRIES) {
+    throw new BuildError("Invalid archive (too many files).");
+  }
+  let totalBytes = 0;
+  for (const entry of entries) totalBytes += entry.header.size;
+  if (totalBytes > MAX_PROJECT_BYTES) {
+    throw new BuildError("Project is too large for Small Software Cloud (limit 200 MB).");
+  }
+
+  for (const entry of entries) {
+    const target = path.resolve(root, entry.entryName);
+    if (target !== root && !target.startsWith(root + path.sep)) {
       throw new BuildError("Invalid archive (path traversal detected).");
     }
+    // Unix mode lives in the high 16 bits of the external attributes.
+    const mode = (entry.header.attr >>> 16) & 0o170000;
+    if (mode === 0o120000) {
+      throw new BuildError("Invalid archive (symlinks are not allowed).");
+    }
+    if (entry.isDirectory) {
+      fs.mkdirSync(target, { recursive: true });
+    } else {
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, entry.getData()); // plain file only — never a symlink
+    }
   }
-  zip.extractAllTo(dest, true);
 }
 
 function dirSize(dir: string): number {
@@ -195,7 +225,7 @@ export async function build(src: string, log: Log, containerized = false): Promi
     log("✓ Static site detected");
     return { appType: "static", buildDir: src, staticDir };
   }
-  if (appType === "node") return buildNode(src, log);
+  if (appType === "node") return buildNode(src, log, containerized);
   return buildPython(src, log, containerized);
 }
 
@@ -203,20 +233,31 @@ export async function build(src: string, log: Log, containerized = false): Promi
 // to static files (Vite/CRA/Vue/plain). We install deps, build if there's a
 // build step, then decide: a real server → run it; otherwise → serve the
 // compiled static output.
-async function buildNode(src: string, log: Log): Promise<BuildResult> {
+async function buildNode(src: string, log: Log, containerized: boolean): Promise<BuildResult> {
   const pkg = JSON.parse(fs.readFileSync(path.join(src, "package.json"), "utf8"));
   log("✓ Node.js application detected");
-  if (fs.existsSync(path.join(src, "package-lock.json"))) {
-    await sh("npm", ["ci", "--no-fund", "--no-audit"], src);
-  } else {
-    await sh("npm", ["install", "--no-fund", "--no-audit"], src);
-  }
+
+  // In production the build runs inside an isolated container (no access to the
+  // platform's data or secrets); on a host without Docker it runs directly.
+  const npm = async (args: string[]) => {
+    if (containerized) {
+      try { await npmInSandbox(src, args); }
+      catch (e: any) { throw new BuildError(e.message ?? String(e)); }
+    } else {
+      await sh("npm", args, src);
+    }
+  };
+
+  const install = fs.existsSync(path.join(src, "package-lock.json"))
+    ? ["ci", "--no-fund", "--no-audit"]
+    : ["install", "--no-fund", "--no-audit"];
+  await npm(install);
   log("✓ Dependencies installed");
 
   const deps = { ...pkg.dependencies, ...pkg.devDependencies };
   const isNext = !!deps.next;
   if (isNext || pkg.scripts?.build) {
-    await sh("npm", ["run", "build"], src);
+    await npm(["run", "build"]);
   }
 
   // A server if it's Next, depends on a server framework, or ships a server file.

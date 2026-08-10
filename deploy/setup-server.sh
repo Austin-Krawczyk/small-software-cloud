@@ -31,6 +31,19 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq ca-certificates curl gnupg git ufw
 
+# Builds run in a memory-limited container; on a small (1 GB) droplet that needs
+# swap headroom so a build can't OOM-kill the control plane. Add 2 GB if there's
+# little RAM and no swap yet.
+if [ ! -f /swapfile ] && [ "$(free -m | awk '/^Mem:/{print $2}')" -lt 2048 ] \
+   && [ "$(free -m | awk '/^Swap:/{print $2}')" -lt 512 ]; then
+  log "Adding a 2 GB swap file (low RAM detected)"
+  fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048
+  chmod 600 /swapfile
+  mkswap /swapfile >/dev/null
+  swapon /swapfile
+  grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+
 if ! command -v node >/dev/null || [ "$(node -v | cut -c2-3)" -lt 20 ]; then
   log "Installing Node.js 24"
   curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
