@@ -116,6 +116,9 @@ sudo -u "$SERVICE_USER" npm run build
 log "Installing auto-update timer"
 bash "$SCRIPT_DIR/install-autoupdate.sh" || echo "  (auto-update install skipped)"
 
+log "Installing daily backup timer"
+bash "$SCRIPT_DIR/install-backups.sh" || echo "  (backup install skipped)"
+
 log "Starting services"
 systemctl daemon-reload
 systemctl enable --now small-software-cloud

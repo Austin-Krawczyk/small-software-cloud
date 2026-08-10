@@ -141,9 +141,20 @@ journalctl -u small-software-cloud-update -f   # watch what it does
 systemctl disable --now small-software-cloud-update.timer  # turn it off
 ```
 
-- **Backups:** the entire platform state is one folder — back up
-  `/var/lib/small-software-cloud` (stop the service first for a consistent copy,
-  or copy the SQLite DB with `sqlite3 .backup`).
+- **Backups:** `setup-server.sh` installs a **daily backup timer** that snapshots
+  the whole data dir to `/var/backups/small-software-cloud/` (consistent even
+  while running — the DB is copied with `VACUUM INTO`), keeping the newest 7.
+  Install on an existing server with `sudo bash deploy/install-backups.sh`; run
+  one now with `systemctl start small-software-cloud-backup`. **Restore** by
+  stopping the service, extracting an archive into the data dir, and starting again:
+  ```bash
+  systemctl stop small-software-cloud
+  tar -xzf /var/backups/small-software-cloud/backup-YYYYMMDD-HHMMSS.tar.gz -C /var/lib/small-software-cloud
+  chown -R smallcloud:smallcloud /var/lib/small-software-cloud
+  systemctl start small-software-cloud
+  ```
+  Copy archives off the box periodically (e.g. `scp`) so a lost droplet isn't a
+  lost backup.
 - **Restarts:** on control-plane restart, running app containers are cleared and
   each app transparently restarts on its next request (scale-to-zero shape).
 - **Docker images:** `node:22-slim` and `python:3.12-slim` are pre-pulled; update

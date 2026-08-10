@@ -1,0 +1,8 @@
+# Oneshot service that snapshots the data dir. Triggered by the backup timer.
+[Unit]
+Description=Small Software Cloud backup (snapshot the data dir)
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/small-software-cloud.env
+ExecStart=/bin/bash /opt/small-software-cloud/deploy/backup.sh
