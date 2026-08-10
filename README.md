@@ -152,3 +152,9 @@ samples/        team-notes (Node), orchard-tracker (FastAPI),
 cli/            smallsoftware CLI
 data/           runtime state: SQLite DB, builds, uploads, app logs (gitignored)
 ```
+
+## What's done and what's next
+
+See **[ROADMAP.md](ROADMAP.md)** for the shipped feature list and the honest
+priority order for what remains (Postgres, org/teams, hardened multi-tenant
+isolation, …).
