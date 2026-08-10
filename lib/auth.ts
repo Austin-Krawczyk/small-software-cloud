@@ -35,6 +35,21 @@ export function createUser(email: string, name: string, password: string): Row {
   return one("SELECT * FROM users WHERE id = ?", id)!;
 }
 
+// Find or create a user from a verified OAuth identity (linked by email). New
+// OAuth users get an empty password hash, which can never satisfy verifyPassword
+// — they sign in with the provider (or set a password later via reset).
+export function upsertOAuthUser(email: string, name: string): Row {
+  const existing = one("SELECT * FROM users WHERE email = ?", email.trim());
+  if (existing) return existing;
+  const id = newId();
+  run(
+    "INSERT INTO users (id, email, name, password_hash, created_at) VALUES (?,?,?,?,?)",
+    id, email.trim(), (name || email.split("@")[0]).trim(), "", now()
+  );
+  claimInvites(id, email);
+  return one("SELECT * FROM users WHERE id = ?", id)!;
+}
+
 // Convert pending email invites into memberships (Google-Docs-style sharing).
 export function claimInvites(userId: string, email: string): void {
   for (const inv of all("SELECT * FROM invites WHERE email = ?", email.trim())) {

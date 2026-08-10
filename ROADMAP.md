@@ -85,7 +85,7 @@ effort/risk notes included so priorities are legible.
 |---|---|---|
 | 🔜 **Org/team model** | High | Sharing that scales past a single owner: teams own projects, member management at the org level. A real data-model change (~a day), fully testable. |
 | 🔜 Ownership transfer / co-owners | Medium | Small once the membership model is richer. |
-| 🔜 Google/GitHub OAuth + SSO | High | `lib/auth.ts` is the single swap point; architected for it. |
+| ✅ Google sign-in (OAuth) | — | "Continue with Google", state-cookie CSRF, link-by-email, config-gated. GitHub/SSO still open via the same pattern. |
 | 🔜 Email verification | Medium | Password reset ✅ done; verification still open. |
 | 🔜 Audit log | Low–Med | Who deployed/shared/accessed what. |
 

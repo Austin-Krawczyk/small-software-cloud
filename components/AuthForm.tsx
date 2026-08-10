@@ -4,10 +4,10 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 
-function Form({ mode }: { mode: "login" | "signup" }) {
+function Form({ mode, googleEnabled }: { mode: "login" | "signup"; googleEnabled: boolean }) {
   const params = useSearchParams();
   const next = params.get("next") ?? "/";
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(params.get("error"));
   const [busy, setBusy] = useState(false);
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
@@ -32,6 +32,14 @@ function Form({ mode }: { mode: "login" | "signup" }) {
     <div className="card auth-card">
       <h2>{mode === "signup" ? "Create your account" : "Welcome back"}</h2>
       {error && <p className="error">{error}</p>}
+      {googleEnabled && (
+        <>
+          <a className="btn btn-google" href={`/api/auth/google?next=${encodeURIComponent(next)}`}>
+            Continue with Google
+          </a>
+          <div className="or-divider"><span>or</span></div>
+        </>
+      )}
       <form onSubmit={submit}>
         {mode === "signup" && (
           <label>Name <input name="name" required autoFocus /></label>
@@ -54,10 +62,10 @@ function Form({ mode }: { mode: "login" | "signup" }) {
   );
 }
 
-export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
+export default function AuthForm({ mode, googleEnabled }: { mode: "login" | "signup"; googleEnabled: boolean }) {
   return (
     <Suspense>
-      <Form mode={mode} />
+      <Form mode={mode} googleEnabled={googleEnabled} />
     </Suspense>
   );
 }

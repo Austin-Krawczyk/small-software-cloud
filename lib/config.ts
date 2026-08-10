@@ -69,6 +69,11 @@ export const baseHostname = () => BASE_HOST.split(":")[0].toLowerCase();
 // Mark cookies Secure when the platform is served over HTTPS (production).
 export const COOKIE_SECURE = APP_PROTO === "https";
 
+// Google OAuth (optional). Set both to enable "Continue with Google". The
+// redirect URI to register in Google Cloud is <platform origin>/api/auth/google/callback.
+export const GOOGLE_CLIENT_ID = process.env.SCLOUD_GOOGLE_CLIENT_ID ?? "";
+export const GOOGLE_CLIENT_SECRET = process.env.SCLOUD_GOOGLE_CLIENT_SECRET ?? "";
+
 // Bearer session cookie for an app's own origin, and the short-lived handoff
 // token that mints it. Both are HMAC-signed with the platform secret.
 export const APP_COOKIE = "scloud_app";

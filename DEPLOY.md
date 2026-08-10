@@ -127,6 +127,16 @@ systemctl status small-software-cloud
 sudo bash deploy/update.sh
 ```
 
+### Google sign-in (optional)
+
+To offer "Continue with Google": create an OAuth **Web application** client at
+<https://console.cloud.google.com/apis/credentials>, add the authorized redirect
+URI `https://YOURDOMAIN/api/auth/google/callback`, then put the client id/secret
+in `/etc/small-software-cloud.env` (`SCLOUD_GOOGLE_CLIENT_ID` /
+`SCLOUD_GOOGLE_CLIENT_SECRET`) and `systemctl restart small-software-cloud`. The
+button appears automatically once both are set; leave them unset to keep
+email/password only.
+
 ### Automatic deploys (optional)
 
 `setup-server.sh` installs a **pull-based auto-update timer** that checks the
