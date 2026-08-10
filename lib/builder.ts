@@ -55,8 +55,7 @@ export async function fetchSource(project: Row, dest: string, log: Log): Promise
   fs.mkdirSync(dest, { recursive: true });
 
   if (project.source_kind === "git") {
-    const url: string = project.repository_url;
-    if (!/^https?:\/\//.test(url)) throw new BuildError("Only https git URLs are supported.");
+    const url = normalizeGitUrl(project.repository_url);
     await sh("git", ["clone", "--depth", "1", url, dest]);
     fs.rmSync(path.join(dest, ".git"), { recursive: true, force: true });
     log("✓ Repository downloaded");
@@ -177,6 +176,28 @@ export async function build(src: string, log: Log, containerized = false): Promi
   log("✓ Dependencies installed");
   log("✓ Application built");
   return { appType, buildDir: src, entry };
+}
+
+// Accept a pasted repo URL and return a clean cloneable one, or throw a clear
+// error. Strips query strings/fragments (e.g. ?utm_source=…) and a trailing
+// slash that would otherwise turn into an invalid clone target.
+export function normalizeGitUrl(raw: string): string {
+  const trimmed = (raw ?? "").trim();
+  if (!/^https?:\/\//.test(trimmed)) {
+    throw new BuildError("Enter an https git URL, e.g. https://github.com/user/repo");
+  }
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    throw new BuildError(`That doesn't look like a valid URL: ${trimmed}`);
+  }
+  // Keep only scheme + host + path; drop ?query and #fragment.
+  let clean = `${url.protocol}//${url.host}${url.pathname}`.replace(/\/+$/, "");
+  if (!url.pathname.replace(/^\/+|\/+$/g, "")) {
+    throw new BuildError("That URL has no repository path (expected .../user/repo).");
+  }
+  return clean;
 }
 
 function nodeStartCmd(pkg: any, src: string): string[] {
