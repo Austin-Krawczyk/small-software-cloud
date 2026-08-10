@@ -2,7 +2,7 @@
 import { cookies, headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { currentUser } from "./auth";
-import { platformOrigin, SESSION_COOKIE } from "./config";
+import { SESSION_COOKIE } from "./config";
 import { getProject, roleFor, Row } from "./db";
 import { initPlatform } from "./deploy";
 
@@ -15,16 +15,26 @@ export interface Actor {
   role?: string;
 }
 
-// CSRF / cross-origin lock. A cookie-authenticated request must originate from
-// the platform's own origin. A deployed app (on its own subdomain) trying to
-// call the API in the user's browser carries a foreign Origin and is refused —
-// even if the browser attaches the session cookie. Bearer-token callers (CLI,
-// AI agents) send no cookie and are unaffected.
+// CSRF / cross-origin lock. A cookie-authenticated request must be same-origin:
+// its Origin header has to match the Host the request was addressed to. That
+// way the dashboard works on any address it's actually served from (localhost,
+// 127.0.0.1, a LAN IP, the production domain), while a deployed app (on its
+// own subdomain) or a third-party site calling the API in the user's browser
+// carries a foreign Origin and is refused — even though the browser attaches
+// the session cookie. Bearer-token callers (CLI, AI agents) send no cookie and
+// are unaffected.
 async function crossOriginBlocked(): Promise<boolean> {
   const jar = await cookies();
   if (!jar.get(SESSION_COOKIE)) return false; // not cookie-authenticated
-  const origin = (await headers()).get("origin");
-  return !!origin && origin !== platformOrigin();
+  const h = await headers();
+  const origin = h.get("origin");
+  if (!origin) return false; // same-origin GET/HEAD navigations omit Origin
+  const host = h.get("host");
+  try {
+    return new URL(origin).host !== host;
+  } catch {
+    return true; // "null" or malformed Origin → refuse
+  }
 }
 
 export async function requireUser(): Promise<{ actor?: Actor; error?: NextResponse }> {
