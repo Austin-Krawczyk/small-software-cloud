@@ -92,7 +92,8 @@ async function gateway(req: NextRequest, ctx: { params: Promise<{ slug: string; 
 }
 
 function serveStatic(project: Row, subPath: string): NextResponse {
-  const root = path.resolve(buildDirFor(project.id));
+  // Static files may live in a build subfolder (dist/, build/, …) recorded at deploy.
+  const root = path.resolve(buildDirFor(project.id), project.static_dir || "");
   let target = path.resolve(root, subPath || "index.html");
   if (fs.existsSync(target) && fs.statSync(target).isDirectory()) {
     target = path.join(target, "index.html");

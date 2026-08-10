@@ -52,9 +52,11 @@ it, and fetches it through the platform proxy.
 
 | Type | Detected by | How it runs |
 |---|---|---|
-| Static site | `index.html` | served directly by the platform |
-| Node.js | `package.json` | `npm install` (+ `npm run build` if present), then `npm start` / `server.js`, listening on `process.env.PORT` |
-| Python / FastAPI | `main.py` or `app.py` exposing `app` | own virtualenv, `uvicorn` |
+| Static site | `index.html` (root or a `dist/`, `build/`, `public/`… folder) | served directly by the platform |
+| Node.js / Next.js server | `package.json` with a server (Next, Express, Fastify, a `start` script, or `server.js`) | `npm install` (+ build), then the server, listening on `process.env.PORT` |
+| Frontend app (Vite / CRA / Vue / plain) | `package.json` with a build step and no server | `npm run build`, then the compiled `dist/`/`build/`/`out/` served as static |
+| Python / FastAPI | `main.py`/`app.py`/… exposing `app` (ASGI) | own virtualenv, `uvicorn` |
+| Python / Flask · Django | Flask/Django in the code or `requirements.txt` (WSGI) | own virtualenv, `gunicorn` |
 
 Code sources: a public git URL, an uploaded zip, or a built-in sample.
 Deliberately few frameworks — this is a product decision, not a limitation to fix.

@@ -1,11 +1,13 @@
 // Build system: fetch source, detect app type, produce an isolated runnable copy.
 //
-// Supported app types (deliberately few, per the MVP scope):
-//   static — index.html at the project root; served directly by the platform
-//   node   — package.json; `npm install`, then `npm start` (or server.js/index.js).
-//            Apps must listen on process.env.PORT. Next.js apps get `next build`.
-//   python — main.py/app.py exposing a FastAPI `app`; own virtualenv (if Python
-//            is installed on the host)
+// Supported app types:
+//   static — a site with an index.html (at the root or in a publish folder like
+//            dist/ or public/); served directly by the platform.
+//   node   — a package.json. A server (Next.js/Express/Fastify/…) is built and
+//            run (must listen on process.env.PORT). A frontend with no server
+//            (Vite/CRA/Vue/plain) is built and its output served as static.
+//   python — FastAPI (run with uvicorn) or Flask/Django (run with gunicorn),
+//            auto-detected; entry file main.py/app.py/wsgi.py/… exposing `app`.
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -25,10 +27,28 @@ export type AppType = "static" | "node" | "python";
 export interface BuildResult {
   appType: AppType;
   buildDir: string;
-  // node: argv to launch; python: uvicorn entry ("main:app")
+  // node: argv to launch the server
   startCmd?: string[];
+  // python: WSGI/ASGI entry ("main:app") and which server runs it
   entry?: string;
+  pyServer?: "uvicorn" | "gunicorn";
+  // static: subfolder of buildDir that holds index.html ("" = root, "dist", …)
+  staticDir?: string;
 }
+
+// Where a static site's index.html may live. For a built frontend the compiled
+// output dirs are preferred over the (source) project root.
+const STATIC_DIRS_BUILT = ["dist", "build", "out", ".output/public", "public"];
+const STATIC_DIRS_PLAIN = ["", "public", "dist", "build", "site", "_site"];
+
+// Node deps that mean "this is a server", so we run it instead of serving static.
+const NODE_SERVER_DEPS = [
+  "next", "express", "fastify", "koa", "@hapi/hapi", "hapi", "@nestjs/core",
+  "restify", "polka", "h3", "hono",
+];
+
+// Python source files that can hold the app object, in priority order.
+const PY_MODULES = ["main", "app", "application", "wsgi", "asgi", "server", "run"];
 
 export type Log = (line: string) => void;
 
@@ -116,12 +136,52 @@ function unwrapSingleFolder(dest: string): void {
 
 export function detectAppType(src: string): AppType {
   if (fs.existsSync(path.join(src, "package.json"))) return "node";
-  if (fs.existsSync(path.join(src, "main.py")) || fs.existsSync(path.join(src, "app.py"))) return "python";
-  if (fs.existsSync(path.join(src, "index.html"))) return "static";
+  if (fs.existsSync(path.join(src, "requirements.txt")) || pyModule(src)) return "python";
+  if (findStaticRoot(src, STATIC_DIRS_PLAIN) !== null) return "static";
   throw new BuildError(
-    "Could not recognize this application. Supported: Node.js (package.json), " +
-    "Python/FastAPI (main.py exposing `app`), or a static site (index.html)."
+    "Could not recognize this application. Supported: Node.js / frontend apps " +
+    "(package.json), Python (FastAPI or Flask), or a static site (index.html)."
   );
+}
+
+// First subfolder (relative) containing an index.html, or null. "" means root.
+function findStaticRoot(src: string, order: string[]): string | null {
+  for (const rel of order) {
+    if (fs.existsSync(path.join(src, rel, "index.html"))) return rel;
+  }
+  return null;
+}
+
+// The Python source file (without .py) most likely to hold the app object.
+function pyModule(src: string): string | null {
+  for (const m of PY_MODULES) {
+    if (fs.existsSync(path.join(src, `${m}.py`))) return m;
+  }
+  return null;
+}
+
+// Work out the entry ("module:attr") and which server (uvicorn for ASGI/FastAPI,
+// gunicorn for WSGI/Flask/Django) by reading the code and requirements.
+export function pythonEntry(src: string): { entry: string; pyServer: "uvicorn" | "gunicorn" } {
+  const mod = pyModule(src);
+  if (!mod) {
+    throw new BuildError(
+      "No Python entry file found. Expected one of: " +
+      PY_MODULES.map((m) => `${m}.py`).join(", ") + " exposing an `app` object."
+    );
+  }
+  const code = fs.readFileSync(path.join(src, `${mod}.py`), "utf8");
+  const reqPath = path.join(src, "requirements.txt");
+  const reqs = fs.existsSync(reqPath) ? fs.readFileSync(reqPath, "utf8").toLowerCase() : "";
+  const hay = (code + "\n" + reqs).toLowerCase();
+
+  const isWsgi = /\bflask\b|\bdjango\b|\bgunicorn\b|from flask|flask\s*\(/.test(hay);
+  const isAsgi = /\bfastapi\b|\bstarlette\b|\buvicorn\b|from fastapi|fastapi\s*\(/.test(hay);
+
+  // Django's wsgi.py exposes `application`; most Flask/FastAPI use `app`.
+  const attr = /^\s*application\s*=/m.test(code) && !/^\s*app\s*=/m.test(code) ? "application" : "app";
+  const pyServer: "uvicorn" | "gunicorn" = isWsgi && !isAsgi ? "gunicorn" : "uvicorn";
+  return { entry: `${mod}:${attr}`, pyServer };
 }
 
 // `containerized` is true when the Docker runner is active. Docker apps install
@@ -130,52 +190,88 @@ export function detectAppType(src: string): AppType {
 // also means a Docker host never needs the python3-venv package.
 export async function build(src: string, log: Log, containerized = false): Promise<BuildResult> {
   const appType = detectAppType(src);
-
   if (appType === "static") {
+    const staticDir = findStaticRoot(src, STATIC_DIRS_PLAIN) ?? "";
     log("✓ Static site detected");
-    return { appType, buildDir: src };
+    return { appType: "static", buildDir: src, staticDir };
+  }
+  if (appType === "node") return buildNode(src, log);
+  return buildPython(src, log, containerized);
+}
+
+// Node projects are either a server (Next/Express/…) or a frontend that builds
+// to static files (Vite/CRA/Vue/plain). We install deps, build if there's a
+// build step, then decide: a real server → run it; otherwise → serve the
+// compiled static output.
+async function buildNode(src: string, log: Log): Promise<BuildResult> {
+  const pkg = JSON.parse(fs.readFileSync(path.join(src, "package.json"), "utf8"));
+  log("✓ Node.js application detected");
+  if (fs.existsSync(path.join(src, "package-lock.json"))) {
+    await sh("npm", ["ci", "--no-fund", "--no-audit"], src);
+  } else {
+    await sh("npm", ["install", "--no-fund", "--no-audit"], src);
+  }
+  log("✓ Dependencies installed");
+
+  const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+  const isNext = !!deps.next;
+  if (isNext || pkg.scripts?.build) {
+    await sh("npm", ["run", "build"], src);
   }
 
-  if (appType === "node") {
-    log("✓ Node.js application detected");
-    const pkg = JSON.parse(fs.readFileSync(path.join(src, "package.json"), "utf8"));
-    if (fs.existsSync(path.join(src, "package-lock.json"))) {
-      await sh("npm", ["ci", "--no-fund", "--no-audit"], src);
-    } else {
-      await sh("npm", ["install", "--no-fund", "--no-audit"], src);
-    }
-    log("✓ Dependencies installed");
-    const isNext = !!(pkg.dependencies?.next || pkg.devDependencies?.next);
-    if (isNext || pkg.scripts?.build) {
-      await sh("npm", ["run", "build"], src);
+  // A server if it's Next, depends on a server framework, or ships a server file.
+  const hasServerDep = NODE_SERVER_DEPS.some((d) => d in deps);
+  const serverCmd = nodeServerCmd(pkg, src);
+  if (isNext || hasServerDep || (serverCmd && !pkg.scripts?.build)) {
+    if (!serverCmd) {
+      throw new BuildError('This app needs a "start" script or a server.js to run.');
     }
     log("✓ Application built");
-    return { appType, buildDir: src, startCmd: nodeStartCmd(pkg, src) };
+    return { appType: "node", buildDir: src, startCmd: serverCmd };
   }
 
-  // python
-  log("✓ Python application detected");
-  const entry = fs.existsSync(path.join(src, "main.py")) ? "main:app" : "app:app";
+  // No server → serve the built (or provided) static output.
+  const staticDir = findStaticRoot(src, STATIC_DIRS_BUILT);
+  if (staticDir !== null) {
+    log(`✓ Built a static site${staticDir ? ` (/${staticDir})` : ""}`);
+    return { appType: "static", buildDir: src, staticDir };
+  }
+  if (serverCmd) {
+    log("✓ Application built");
+    return { appType: "node", buildDir: src, startCmd: serverCmd };
+  }
+  throw new BuildError(
+    "Built the project, but found no server to start and no static output " +
+    "(expected a dist/, build/, or out/ folder with index.html)."
+  );
+}
+
+async function buildPython(src: string, log: Log, containerized: boolean): Promise<BuildResult> {
+  const { entry, pyServer } = pythonEntry(src);
+  const kind = pyServer === "gunicorn" ? "Flask/WSGI" : "FastAPI/ASGI";
+  log(`✓ Python application detected (${kind})`);
 
   if (containerized) {
     // Deps are installed inside the container at start; nothing to do on the host.
     log("✓ Application built");
-    return { appType, buildDir: src, entry };
+    return { appType: "python", buildDir: src, entry, pyServer };
   }
 
   const py = process.platform === "win32" ? "python" : "python3";
-  const venv = path.join(src, ".appenv");
-  await sh(py, ["-m", "venv", venv]);
+  await sh(py, ["-m", "venv", path.join(src, ".appenv")]);
   const venvPy = venvPython(src);
+  const server = pyServer === "gunicorn" ? "gunicorn" : "uvicorn";
   const req = path.join(src, "requirements.txt");
   if (fs.existsSync(req)) {
-    await sh(venvPy, ["-m", "pip", "install", "--quiet", "-r", req, "uvicorn"], src);
+    await sh(venvPy, ["-m", "pip", "install", "--quiet", "-r", req, server], src);
+  } else if (pyServer === "gunicorn") {
+    await sh(venvPy, ["-m", "pip", "install", "--quiet", "flask", "gunicorn"], src);
   } else {
     await sh(venvPy, ["-m", "pip", "install", "--quiet", "fastapi", "uvicorn", "python-multipart"], src);
   }
   log("✓ Dependencies installed");
   log("✓ Application built");
-  return { appType, buildDir: src, entry };
+  return { appType: "python", buildDir: src, entry, pyServer };
 }
 
 // Accept a pasted repo URL and return a clean cloneable one, or throw a clear
@@ -200,14 +296,14 @@ export function normalizeGitUrl(raw: string): string {
   return clean;
 }
 
-function nodeStartCmd(pkg: any, src: string): string[] {
+// The command to run a Node server, or null if this project has none (in which
+// case it's treated as a static frontend).
+export function nodeServerCmd(pkg: any, src: string): string[] | null {
   if (pkg.scripts?.start) return ["npm", "start"];
   for (const candidate of [pkg.main, "server.js", "index.js", "server.mjs", "index.mjs"]) {
     if (candidate && fs.existsSync(path.join(src, candidate))) return ["node", candidate];
   }
-  throw new BuildError(
-    'No way to start this app: add a "start" script to package.json or a server.js.'
-  );
+  return null;
 }
 
 export function venvPython(buildDir: string): string {

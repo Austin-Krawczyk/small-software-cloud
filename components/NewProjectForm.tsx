@@ -67,6 +67,11 @@ export default function NewProjectForm({ samples }: { samples: string[] }) {
           </label>
         </fieldset>
 
+        <p className="muted" style={{ fontSize: "0.85rem" }}>
+          Deploys Node.js &amp; Next.js servers, frontend apps (Vite/React/Vue → static),
+          Python FastAPI or Flask, and plain static sites.
+        </p>
+
         <button className="btn btn-primary" type="submit" disabled={busy}>Create app</button>
       </form>
     </div>

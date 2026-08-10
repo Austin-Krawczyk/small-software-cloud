@@ -79,8 +79,10 @@ class SubprocessRunner implements Runner {
     let cmd: string[];
     if (result.appType === "python") {
       env.PATH = path.dirname(venvPython(result.buildDir));
-      cmd = [venvPython(result.buildDir), "-m", "uvicorn", result.entry!,
-             "--host", APP_HOST, "--port", String(port)];
+      cmd = result.pyServer === "gunicorn"
+        ? [venvPython(result.buildDir), "-m", "gunicorn", "--bind", `${APP_HOST}:${port}`, result.entry!]
+        : [venvPython(result.buildDir), "-m", "uvicorn", result.entry!,
+           "--host", APP_HOST, "--port", String(port)];
     } else {
       // node — the app must listen on process.env.PORT
       const sysRoot = process.env.SYSTEMROOT ?? "";
@@ -175,11 +177,18 @@ class DockerRunner implements Runner {
       // Host-built virtualenvs aren't portable into a container, so install the
       // app's deps in-container at start. (Node's node_modules ARE portable
       // across same-OS/arch, so Node apps reuse the host build directly.)
+      const gunicorn = result.pyServer === "gunicorn";
+      const server = gunicorn ? "gunicorn" : "uvicorn";
       const hasReq = fs.existsSync(path.join(result.buildDir, "requirements.txt"));
-      const pip = hasReq
-        ? "pip install --user --quiet --disable-pip-version-check -r requirements.txt uvicorn"
-        : "pip install --user --quiet --disable-pip-version-check fastapi uvicorn";
-      return ["sh", "-c", `${pip}; exec python -m uvicorn ${result.entry} --host 0.0.0.0 --port 8080`];
+      const base = hasReq
+        ? `pip install --user --quiet --disable-pip-version-check -r requirements.txt ${server}`
+        : gunicorn
+          ? "pip install --user --quiet --disable-pip-version-check flask gunicorn"
+          : "pip install --user --quiet --disable-pip-version-check fastapi uvicorn";
+      const run = gunicorn
+        ? `exec python -m gunicorn --bind 0.0.0.0:8080 ${result.entry}`
+        : `exec python -m uvicorn ${result.entry} --host 0.0.0.0 --port 8080`;
+      return ["sh", "-c", `${base}; ${run}`];
     }
     return result.startCmd!;
   }

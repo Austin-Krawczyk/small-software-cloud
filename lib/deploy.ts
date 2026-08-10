@@ -22,7 +22,7 @@ import {
 import {
   appendDeployLog, all, envMap, getProject, newId, now, one, run, Row, setProject,
 } from "./db";
-import { build, BuildError, BuildResult, fetchSource, venvPython } from "./builder";
+import { build, BuildError, BuildResult, fetchSource, nodeServerCmd, pythonEntry, venvPython } from "./builder";
 import { freePort, getRunner } from "./runner";
 
 const g = globalThis as any;
@@ -85,7 +85,7 @@ async function runDeployment(projectId: string, depId: string): Promise<void> {
 
     const url = appUrl(project.slug);
     setProject(projectId, {
-      status: "running", app_type: result.appType,
+      status: "running", app_type: result.appType, static_dir: result.staticDir ?? "",
       port, pid, last_deployed_at: now(),
     });
     run(
@@ -197,10 +197,14 @@ export async function ensureRunning(project: Row): Promise<Row> {
 
     const result: BuildResult = { appType: p.app_type, buildDir: dir };
     if (p.app_type === "python") {
-      result.entry = fs.existsSync(path.join(dir, "main.py")) ? "main:app" : "app:app";
+      const { entry, pyServer } = pythonEntry(dir);
+      result.entry = entry;
+      result.pyServer = pyServer;
     } else if (p.app_type === "node") {
       const pkg = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8"));
-      result.startCmd = pkg.scripts?.start ? ["npm", "start"] : ["node", pkg.main ?? "server.js"];
+      const cmd = nodeServerCmd(pkg, dir);
+      if (!cmd) throw new Error("This application needs to be deployed again.");
+      result.startCmd = cmd;
     }
     const { port, pid } = await startInstance(p, result, () => {});
     setProject(p.id, { status: "running", port, pid });
