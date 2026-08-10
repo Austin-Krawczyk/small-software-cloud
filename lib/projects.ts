@@ -92,20 +92,36 @@ export function latestDeployment(projectId: string): Row | undefined {
   );
 }
 
-// Share with an email: existing users become collaborators immediately;
-// unknown emails become pending invites claimed at signup.
-export function shareWithEmail(projectId: string, email: string): "member_added" | "invite_pending" {
+export type ShareRole = "collaborator" | "editor";
+
+// Share with an email at a given role ("collaborator" = can use, "editor" = can
+// also deploy/edit). Existing users get access immediately — and if they're
+// already a member, their role is updated. Unknown emails become pending invites
+// claimed at signup. The owner's own role is never downgraded here.
+export function shareWithEmail(
+  projectId: string, email: string, role: ShareRole = "collaborator"
+): "member_added" | "role_updated" | "invite_pending" {
   const user = one("SELECT id FROM users WHERE email = ?", email.trim());
   if (user) {
+    const existing = one(
+      "SELECT role FROM project_members WHERE project_id = ? AND user_id = ?", projectId, user.id
+    );
+    if (existing?.role === "owner") return "member_added"; // never change the owner
+    if (existing) {
+      run("UPDATE project_members SET role = ? WHERE project_id = ? AND user_id = ?",
+        role, projectId, user.id);
+      return "role_updated";
+    }
     run(
-      "INSERT OR IGNORE INTO project_members (project_id, user_id, role, created_at) VALUES (?,?,?,?)",
-      projectId, user.id, "collaborator", now()
+      "INSERT INTO project_members (project_id, user_id, role, created_at) VALUES (?,?,?,?)",
+      projectId, user.id, role, now()
     );
     return "member_added";
   }
   run(
-    "INSERT OR IGNORE INTO invites (project_id, email, role, created_at) VALUES (?,?,?,?)",
-    projectId, email.trim(), "collaborator", now()
+    "INSERT INTO invites (project_id, email, role, created_at) VALUES (?,?,?,?) " +
+    "ON CONFLICT(project_id, email) DO UPDATE SET role = excluded.role",
+    projectId, email.trim(), role, now()
   );
   return "invite_pending";
 }

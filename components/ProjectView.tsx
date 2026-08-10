@@ -10,7 +10,7 @@ interface Detail {
   source_kind: string; repository_url: string; sample: string;
   role: string; owner_id?: string;
   members: Member[];
-  pending_invites: { email: string }[];
+  pending_invites: { email: string; role: string }[];
   latest_deployment: { id: string; status: string; logs: string } | null;
 }
 
@@ -44,7 +44,8 @@ export default function ProjectView({ projectId }: { projectId: string }) {
   if (notFound) return <p className="empty">Project not found.</p>;
   if (!detail) return <p className="empty muted">Loading…</p>;
 
-  const isOwner = detail.role === "owner";
+  const canEdit = detail.role === "owner" || detail.role === "editor"; // deploy, code, env, stop
+  const canManage = detail.role === "owner"; // share, delete
   const running = detail.status === "running";
 
   return (
@@ -67,13 +68,13 @@ export default function ProjectView({ projectId }: { projectId: string }) {
                 : <span className="muted">{detail.app_path} — not running yet</span>}
             </p>
             <div className="card-actions">
-              {isOwner && (
+              {canEdit && (
                 <button className="btn btn-primary" disabled={busy || detail.status === "building"}
                   onClick={() => act(`/api/projects/${projectId}/deploy`)}>
                   {detail.status === "building" ? "Building…" : "Deploy"}
                 </button>
               )}
-              {isOwner && running && (
+              {canEdit && running && (
                 <button className="btn" disabled={busy}
                   onClick={() => act(`/api/projects/${projectId}/stop`)}>Stop</button>
               )}
@@ -88,13 +89,13 @@ export default function ProjectView({ projectId }: { projectId: string }) {
             </pre>
           </div>
 
-          {isOwner && <CodeCard detail={detail} onChanged={load} />}
-          {isOwner && <EnvVarsCard projectId={projectId} />}
+          {canEdit && <CodeCard detail={detail} onChanged={load} />}
+          {canEdit && <EnvVarsCard projectId={projectId} />}
         </div>
 
         <div>
-          <SharingCard detail={detail} isOwner={isOwner} onChanged={load} />
-          {isOwner && (
+          <SharingCard detail={detail} canManage={canManage} onChanged={load} />
+          {canManage && (
             <div className="card danger">
               <h3>Delete</h3>
               <button className="btn btn-danger" disabled={busy}
@@ -237,23 +238,31 @@ function EnvVarsCard({ projectId }: { projectId: string }) {
   );
 }
 
-function SharingCard({ detail, isOwner, onChanged }:
-  { detail: Detail; isOwner: boolean; onChanged: () => void }) {
+const ROLE_LABEL: Record<string, string> = {
+  owner: "owner", editor: "can edit", collaborator: "can use",
+};
+
+function SharingCard({ detail, canManage, onChanged }:
+  { detail: Detail; canManage: boolean; onChanged: () => void }) {
   const [busy, setBusy] = useState(false);
+
+  async function shareWith(email: string, role: string) {
+    await fetch(`/api/projects/${detail.id}/members`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, role }),
+    });
+    onChanged();
+  }
 
   async function share(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setBusy(true);
     const form = e.currentTarget;
-    const email = (new FormData(form).get("email") as string).trim();
-    await fetch(`/api/projects/${detail.id}/members`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
+    const fd = new FormData(form);
+    await shareWith((fd.get("email") as string).trim(), fd.get("role") as string);
     form.reset();
     setBusy(false);
-    onChanged();
   }
 
   async function remove(body: Record<string, string>) {
@@ -272,24 +281,36 @@ function SharingCard({ detail, isOwner, onChanged }:
         {detail.members.map((m) => (
           <li key={m.user_id}>
             <span>{m.name} <span className="muted">({m.email})</span></span>
-            <span className="pill pill-role">{m.role}</span>
-            {isOwner && m.role !== "owner" && (
+            {canManage && m.role !== "owner" ? (
+              <select className="role-select" value={m.role}
+                onChange={(e) => shareWith(m.email, e.target.value)}>
+                <option value="collaborator">can use</option>
+                <option value="editor">can edit</option>
+              </select>
+            ) : (
+              <span className="pill pill-role">{ROLE_LABEL[m.role] ?? m.role}</span>
+            )}
+            {canManage && m.role !== "owner" && (
               <button className="link-btn" onClick={() => remove({ user_id: m.user_id })}>remove</button>
             )}
           </li>
         ))}
         {detail.pending_invites.map((i) => (
           <li key={i.email}>
-            <span>{i.email} <span className="muted">(invited — gets access when they sign up)</span></span>
-            {isOwner && (
+            <span>{i.email} <span className="muted">(invited · {ROLE_LABEL[i.role] ?? i.role} — gets access at signup)</span></span>
+            {canManage && (
               <button className="link-btn" onClick={() => remove({ email: i.email })}>remove</button>
             )}
           </li>
         ))}
       </ul>
-      {isOwner && (
+      {canManage && (
         <form className="share-form" onSubmit={share}>
           <input name="email" type="email" required placeholder="teammate@example.com" />
+          <select name="role" defaultValue="collaborator" className="role-select">
+            <option value="collaborator">can use</option>
+            <option value="editor">can edit</option>
+          </select>
           <button className="btn btn-primary" type="submit" disabled={busy}>Share</button>
         </form>
       )}

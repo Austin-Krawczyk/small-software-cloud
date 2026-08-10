@@ -8,7 +8,7 @@ import { setProject } from "@/lib/projects";
 // Upload a zip of the project's code (multipart field: code_zip).
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { error } = await requireProject(id, { ownerOnly: true });
+  const { error } = await requireProject(id, { need: "edit" });
   if (error) return error;
 
   const form = await req.formData().catch(() => null);

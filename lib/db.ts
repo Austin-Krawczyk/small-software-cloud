@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE TABLE IF NOT EXISTS project_members (
   project_id TEXT NOT NULL REFERENCES projects(id),
   user_id TEXT NOT NULL REFERENCES users(id),
-  role TEXT NOT NULL,                          -- owner | collaborator
+  role TEXT NOT NULL,                          -- owner | editor | collaborator
   created_at INTEGER NOT NULL,
   PRIMARY KEY (project_id, user_id)
 );

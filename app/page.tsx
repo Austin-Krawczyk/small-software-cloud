@@ -45,7 +45,7 @@ export default async function Home() {
               {p.status === "running" && (
                 <a className="btn btn-sm" href={appOriginFor(p.slug)} target="_blank">Open</a>
               )}
-              {p.role === "owner" && <DeployButton projectId={p.id} small />}
+              {(p.role === "owner" || p.role === "editor") && <DeployButton projectId={p.id} small />}
               <Link className="btn btn-sm" href={`/projects/${p.id}`}>
                 {p.role === "owner" ? "Share" : "Details"}
               </Link>

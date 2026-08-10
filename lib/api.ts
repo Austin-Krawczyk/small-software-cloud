@@ -49,17 +49,31 @@ export async function requireUser(): Promise<{ actor?: Actor; error?: NextRespon
   return { actor: { user } };
 }
 
+// What a role is allowed to do:
+//   view   — see the project and use the deployed app (owner, editor, collaborator)
+//   edit   — deploy, change code, env vars, stop (owner, editor)
+//   manage — share/remove members, rename, delete (owner only)
+export type Capability = "view" | "edit" | "manage";
+
+export function can(role: string | null, cap: Capability): boolean {
+  if (role === "owner") return true;
+  if (role === "editor") return cap === "view" || cap === "edit";
+  if (role === "collaborator") return cap === "view";
+  return false;
+}
+
 export async function requireProject(
   projectId: string,
-  opts: { ownerOnly?: boolean } = {}
+  opts: { need?: Capability } = {}
 ): Promise<{ actor?: Actor; error?: NextResponse }> {
   const { actor, error } = await requireUser();
   if (error) return { error };
   const project = getProject(projectId);
   const role = project ? roleFor(projectId, actor!.user.id) : null;
   if (!project || !role) return { error: jsonError(404, "Project not found.") };
-  if (opts.ownerOnly && role !== "owner") {
-    return { error: jsonError(403, "Only the project owner can do that.") };
+  if (!can(role, opts.need ?? "view")) {
+    const who = (opts.need ?? "view") === "manage" ? "the project owner" : "an editor or owner";
+    return { error: jsonError(403, `Only ${who} can do that.`) };
   }
   return { actor: { user: actor!.user, project, role } };
 }

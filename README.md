@@ -97,8 +97,10 @@ Key properties:
   a stopped app transparently restarts it (sub-second for Node apps).
 - **Sharing is Google-Docs-style.** Share with any email; if they don't have an
   account yet, the invite converts to access the moment they sign up.
-- **Roles:** `owner` (deploy, edit, share, delete) and `collaborator` (open the
-  app, see basic info).
+- **Roles:** `owner` (deploy, edit, share, delete), `editor` (can use + deploy,
+  change code, and env vars — but not share or delete), and `collaborator` (open
+  and use the app, see basic info). Pick the role in the Share form; the owner can
+  change a member's role inline.
 
 ## API (for AI agents)
 

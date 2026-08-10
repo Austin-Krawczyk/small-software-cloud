@@ -9,14 +9,14 @@ const KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const { id } = await params;
-  const { error } = await requireProject(id, { ownerOnly: true });
+  const { error } = await requireProject(id, { need: "edit" });
   if (error) return error;
   return NextResponse.json({ env: envVars(id) });
 }
 
 export async function PUT(req: NextRequest, { params }: Params) {
   const { id } = await params;
-  const { error } = await requireProject(id, { ownerOnly: true });
+  const { error } = await requireProject(id, { need: "edit" });
   if (error) return error;
   const { key, value } = await req.json().catch(() => ({}));
   if (!key || !KEY_RE.test(key)) {
@@ -28,7 +28,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
 export async function DELETE(req: NextRequest, { params }: Params) {
   const { id } = await params;
-  const { error } = await requireProject(id, { ownerOnly: true });
+  const { error } = await requireProject(id, { need: "edit" });
   if (error) return error;
   const { key } = await req.json().catch(() => ({}));
   if (!key) return jsonError(422, "A key is required.");

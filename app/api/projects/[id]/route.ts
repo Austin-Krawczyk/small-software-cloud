@@ -26,7 +26,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 // Update code source (git URL) or name/description.
 export async function PATCH(req: NextRequest, { params }: Params) {
   const { id } = await params;
-  const { error } = await requireProject(id, { ownerOnly: true });
+  const { error } = await requireProject(id, { need: "edit" });
   if (error) return error;
   const body = await req.json().catch(() => ({}));
   const fields: Record<string, any> = {};
@@ -43,7 +43,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
   const { id } = await params;
-  const { error } = await requireProject(id, { ownerOnly: true });
+  const { error } = await requireProject(id, { need: "manage" });
   if (error) return error;
   await deleteProject(id);
   return NextResponse.json({ ok: true });
