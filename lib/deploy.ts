@@ -78,7 +78,7 @@ async function runDeployment(projectId: string, depId: string): Promise<void> {
 
     const dir = buildDirFor(projectId);
     await fetchSource(project, dir, log);
-    const result = await build(dir, log);
+    const result = await build(dir, log, getRunner().name === "docker");
 
     run("UPDATE deployments SET status='deploying' WHERE id = ?", depId);
     const { port, pid } = await startInstance(project, result, log);

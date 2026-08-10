@@ -125,7 +125,11 @@ export function detectAppType(src: string): AppType {
   );
 }
 
-export async function build(src: string, log: Log): Promise<BuildResult> {
+// `containerized` is true when the Docker runner is active. Docker apps install
+// their Python deps inside the container at start (host virtualenvs aren't
+// portable into a container anyway), so we skip building one on the host — which
+// also means a Docker host never needs the python3-venv package.
+export async function build(src: string, log: Log, containerized = false): Promise<BuildResult> {
   const appType = detectAppType(src);
 
   if (appType === "static") {
@@ -152,6 +156,14 @@ export async function build(src: string, log: Log): Promise<BuildResult> {
 
   // python
   log("✓ Python application detected");
+  const entry = fs.existsSync(path.join(src, "main.py")) ? "main:app" : "app:app";
+
+  if (containerized) {
+    // Deps are installed inside the container at start; nothing to do on the host.
+    log("✓ Application built");
+    return { appType, buildDir: src, entry };
+  }
+
   const py = process.platform === "win32" ? "python" : "python3";
   const venv = path.join(src, ".appenv");
   await sh(py, ["-m", "venv", venv]);
@@ -164,7 +176,6 @@ export async function build(src: string, log: Log): Promise<BuildResult> {
   }
   log("✓ Dependencies installed");
   log("✓ Application built");
-  const entry = fs.existsSync(path.join(src, "main.py")) ? "main:app" : "app:app";
   return { appType, buildDir: src, entry };
 }
 
