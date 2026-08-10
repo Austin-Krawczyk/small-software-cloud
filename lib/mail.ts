@@ -90,6 +90,22 @@ export function sendInviteEmail(o: InviteOpts): Promise<void> {
   return sendMail({ to: o.to, subject, text, html });
 }
 
+export function sendResetEmail(to: string, resetUrl: string): Promise<void> {
+  const subject = "Reset your Small Software Cloud password";
+  const text =
+    `Someone asked to reset the password for this account.\n\n` +
+    `Reset it here (link expires in 30 minutes):\n${resetUrl}\n\n` +
+    `If it wasn't you, you can ignore this email — your password stays the same.\n`;
+  const html =
+    `<div style="font-family:system-ui;max-width:32rem">` +
+    `<p>Someone asked to reset the password for this account.</p>` +
+    `<p><a href="${resetUrl}" style="display:inline-block;background:#2c6bed;color:#fff;` +
+    `padding:.5rem 1rem;border-radius:8px;text-decoration:none">Reset password</a></p>` +
+    `<p style="color:#667">The link expires in 30 minutes. If it wasn't you, ignore this — ` +
+    `your password stays the same.</p></div>`;
+  return sendMail({ to, subject, text, html });
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }

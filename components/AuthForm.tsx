@@ -47,6 +47,9 @@ function Form({ mode }: { mode: "login" | "signup" }) {
           ? <>Already have an account? <Link href={`/login?next=${encodeURIComponent(next)}`}>Sign in</Link></>
           : <>New here? <Link href={`/signup?next=${encodeURIComponent(next)}`}>Create an account</Link></>}
       </p>
+      {mode === "login" && (
+        <p className="muted"><Link href="/forgot">Forgot your password?</Link></p>
+      )}
     </div>
   );
 }

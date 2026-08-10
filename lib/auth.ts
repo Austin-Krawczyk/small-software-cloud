@@ -5,7 +5,7 @@
 // Supabase Auth, OAuth): nothing outside it knows how users are verified.
 import crypto from "node:crypto";
 import { cookies, headers } from "next/headers";
-import { SESSION_TTL_MS } from "./config";
+import { secretKey, SESSION_TTL_MS } from "./config";
 import { all, newId, now, one, run, Row } from "./db";
 
 // ---- passwords ----
@@ -88,6 +88,46 @@ export async function currentUser(): Promise<Row | null> {
   }
   const h = await headers();
   return userFromBearer(h.get("authorization") ?? "") ?? null;
+}
+
+// ---- password reset ----
+//
+// A signed, single-use, time-limited token — no DB table needed. The token
+// embeds a fingerprint of the current password hash, so it stops working the
+// moment the password changes (single-use) or the link expires.
+
+const RESET_TTL_MS = 30 * 60 * 1000;
+
+function passwordFingerprint(hash: string): string {
+  return crypto.createHash("sha256").update(hash).digest("hex").slice(0, 12);
+}
+
+export function makeResetToken(user: Row): string {
+  const payload = { u: user.id, k: passwordFingerprint(user.password_hash), e: Date.now() + RESET_TTL_MS };
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const mac = crypto.createHmac("sha256", secretKey()).update(body).digest("base64url");
+  return `${body}.${mac}`;
+}
+
+export function verifyResetToken(token: string | undefined | null): Row | null {
+  if (!token || !token.includes(".")) return null;
+  const [body, mac] = token.split(".", 2);
+  const expected = crypto.createHmac("sha256", secretKey()).update(body).digest("base64url");
+  if (mac.length !== expected.length ||
+      !crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(expected))) {
+    return null;
+  }
+  let payload: any;
+  try { payload = JSON.parse(Buffer.from(body, "base64url").toString()); } catch { return null; }
+  if (!payload || payload.e < Date.now()) return null;
+  const user = one("SELECT * FROM users WHERE id = ?", payload.u);
+  if (!user || passwordFingerprint(user.password_hash) !== payload.k) return null;
+  return user;
+}
+
+export function setPassword(userId: string, password: string): void {
+  run("UPDATE users SET password_hash = ? WHERE id = ?", hashPassword(password), userId);
+  run("DELETE FROM sessions WHERE user_id = ?", userId); // sign out everywhere after a reset
 }
 
 // ---- API tokens ----
