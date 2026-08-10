@@ -24,6 +24,30 @@ export function signClaim(claim: Omit<AppClaim, "e">, ttlMs: number): string {
   return `${body}.${sign(body)}`;
 }
 
+// Generic signed, expiring token over an arbitrary JSON payload. Used for the
+// anonymous "share link" guest session (payload { anon, s, k }); the gateway
+// reads either a member cookie or a guest cookie with verifyToken.
+export function signToken(payload: Record<string, unknown>, ttlMs: number): string {
+  const body = Buffer.from(JSON.stringify({ ...payload, e: Date.now() + ttlMs })).toString("base64url");
+  return `${body}.${sign(body)}`;
+}
+
+export function verifyToken(token: string | undefined | null): Record<string, any> | null {
+  if (!token || !token.includes(".")) return null;
+  const [body, mac] = token.split(".", 2);
+  const expected = sign(body);
+  if (mac.length !== expected.length ||
+      !crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(expected))) {
+    return null;
+  }
+  try {
+    const payload = JSON.parse(Buffer.from(body, "base64url").toString());
+    return payload.e > Date.now() ? payload : null;
+  } catch {
+    return null;
+  }
+}
+
 export function verifyClaim(token: string | undefined | null): AppClaim | null {
   if (!token || !token.includes(".")) return null;
   const [body, mac] = token.split(".", 2);

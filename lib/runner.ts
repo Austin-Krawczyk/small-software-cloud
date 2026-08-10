@@ -258,12 +258,15 @@ let runner: Runner | null = null;
 
 export function getRunner(): Runner {
   if (!runner) {
-    let hasDocker = false;
+    // `docker ps` (not `docker --version`) so we only pick the Docker runner when
+    // the daemon is actually reachable — the CLI can be installed with the engine
+    // stopped (e.g. Docker Desktop off), in which case we fall back to subprocess.
+    let dockerUp = false;
     try {
-      execFileSync("docker", ["--version"], { windowsHide: true, stdio: "pipe" });
-      hasDocker = true;
+      execFileSync("docker", ["ps", "-q"], { windowsHide: true, stdio: "pipe", timeout: 5000 });
+      dockerUp = true;
     } catch {}
-    runner = hasDocker ? new DockerRunner() : new SubprocessRunner();
+    runner = dockerUp ? new DockerRunner() : new SubprocessRunner();
   }
   return runner;
 }

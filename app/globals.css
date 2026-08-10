@@ -115,6 +115,10 @@ legend { font-size: 0.9rem; padding: 0 0.4rem; }
   font-size: 0.8rem; padding: 0.1rem 0.3rem; border: 1px solid var(--line);
   border-radius: 6px; background: var(--card); color: var(--muted);
 }
+.link-share { margin-top: 1rem; padding-top: 0.8rem; border-top: 1px solid var(--line); }
+.link-toggle { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; cursor: pointer; }
+.link-toggle input { width: auto; }
+.link-share input[readonly] { font-family: ui-monospace, monospace; font-size: 0.8rem; color: var(--muted); }
 .btn-google { display: block; text-align: center; width: 100%; font-weight: 600; }
 .or-divider {
   display: flex; align-items: center; text-align: center;

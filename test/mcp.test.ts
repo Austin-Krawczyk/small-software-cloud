@@ -13,7 +13,7 @@ test("zipFiles: packs files (including nested paths) into a readable zip", () =>
   const zip = new AdmZip(buf);
   const names = zip.getEntries().map((e) => e.entryName).sort();
   assert.deepEqual(names, ["leading-slash.txt", "package.json", "src/index.js"]);
-  assert.equal(zip.getEntry("package.json").getData().toString(), '{"name":"x"}');
+  assert.equal(zip.getEntry("package.json")!.getData().toString(), '{"name":"x"}');
 });
 
 test("zipFiles: rejects empty or malformed input", () => {

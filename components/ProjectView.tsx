@@ -354,6 +354,56 @@ const ROLE_LABEL: Record<string, string> = {
   owner: "owner", editor: "can edit", collaborator: "can use",
 };
 
+function LinkShareBlock({ projectId }: { projectId: string }) {
+  const [state, setState] = useState<{ enabled: boolean; url: string | null }>({ enabled: false, url: null });
+  const [copied, setCopied] = useState(false);
+
+  const load = useCallback(async () => {
+    const r = await fetch(`/api/projects/${projectId}/link`, { cache: "no-store" });
+    if (r.ok) setState(await r.json());
+  }, [projectId]);
+  useEffect(() => { load(); }, [load]);
+
+  async function toggle() {
+    await fetch(`/api/projects/${projectId}/link`, state.enabled
+      ? { method: "DELETE" }
+      : { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    load();
+  }
+  async function reset() {
+    await fetch(`/api/projects/${projectId}/link`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ rotate: true }),
+    });
+    setCopied(false);
+    load();
+  }
+  async function copy() {
+    if (!state.url) return;
+    try { await navigator.clipboard.writeText(state.url); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {}
+  }
+
+  return (
+    <div className="link-share">
+      <label className="link-toggle">
+        <input type="checkbox" checked={state.enabled} onChange={toggle} />
+        Anyone with the link can use this — no account needed
+      </label>
+      {state.enabled && state.url && (
+        <>
+          <div className="share-form" style={{ marginTop: "0.4rem" }}>
+            <input readOnly value={state.url} onFocus={(e) => e.currentTarget.select()} />
+            <button className="btn btn-sm" onClick={copy}>{copied ? "Copied!" : "Copy"}</button>
+            <button className="link-btn" onClick={reset}>reset</button>
+          </div>
+          <p className="muted" style={{ fontSize: "0.78rem", marginTop: "0.3rem" }}>
+            They can open and use the app, but not edit or deploy. “Reset” revokes the current link.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 function SharingCard({ detail, canManage, onChanged }:
   { detail: Detail; canManage: boolean; onChanged: () => void }) {
   const [busy, setBusy] = useState(false);
@@ -432,6 +482,7 @@ function SharingCard({ detail, canManage, onChanged }:
             <button className="btn btn-primary" type="submit" disabled={busy}>Share</button>
           </form>
           {msg && <p className="muted" style={{ marginTop: "0.5rem", fontSize: "0.85rem" }}>{msg}</p>}
+          <LinkShareBlock projectId={detail.id} />
         </>
       )}
     </div>

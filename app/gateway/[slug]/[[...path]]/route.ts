@@ -9,15 +9,27 @@
 // /appauth/callback). A missing/expired cookie bounces to the platform origin
 // to (re)authenticate. The signed-in user's email is forwarded as
 // X-SmallSoftware-User so apps can personalize without touching credentials.
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import {
-  APP_COOKIE, APP_HOST, appOriginFor, platformOrigin,
+  APP_COOKIE, APP_HOST, APP_SESSION_TTL_MS, appOriginFor, COOKIE_SECURE, platformOrigin,
 } from "@/lib/config";
 import { getProjectBySlug, one, roleFor, Row } from "@/lib/db";
-import { verifyClaim } from "@/lib/appauth";
+import { signToken, verifyToken } from "@/lib/appauth";
 import { buildDirFor, ensureRunning, initPlatform } from "@/lib/deploy";
+
+// Fingerprint of the current share key, embedded in guest cookies so rotating or
+// disabling the link instantly invalidates sessions minted from the old link.
+const keyFingerprint = (k: string) => crypto.createHash("sha256").update(k).digest("hex").slice(0, 16);
+
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a), bb = Buffer.from(b);
+  return ab.length === bb.length && crypto.timingSafeEqual(ab, bb);
+}
+
+const GUEST: Row = { email: "guest", name: "Guest (shared link)" };
 
 const HOP_BY_HOP = new Set([
   "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
@@ -54,6 +66,18 @@ function toAuth(req: NextRequest, slug: string, subPath: string): NextResponse {
   return res;
 }
 
+// Exchange a valid ?key= share link for an anonymous guest cookie, then redirect
+// to the same URL with the secret stripped out of the address bar.
+function mintGuestSession(slug: string, subPath: string, req: NextRequest, shareKey: string): NextResponse {
+  const dest = new URL(`${appOriginFor(slug)}/${subPath}`);
+  req.nextUrl.searchParams.forEach((v, k) => { if (k !== "key") dest.searchParams.set(k, v); });
+  const res = NextResponse.redirect(dest, 302);
+  res.cookies.set(APP_COOKIE, signToken({ anon: 1, s: slug, k: keyFingerprint(shareKey) }, APP_SESSION_TTL_MS), {
+    httpOnly: true, sameSite: "lax", secure: COOKIE_SECURE, maxAge: APP_SESSION_TTL_MS / 1000, path: "/",
+  });
+  return res;
+}
+
 async function gateway(req: NextRequest, ctx: { params: Promise<{ slug: string; path?: string[] }> }) {
   initPlatform();
 
@@ -71,14 +95,30 @@ async function gateway(req: NextRequest, ctx: { params: Promise<{ slug: string; 
   const project = getProjectBySlug(slug);
   if (!project) return page("Not found", "No application lives at this address.", 404);
 
-  const claim = verifyClaim(req.cookies.get(APP_COOKIE)?.value);
-  if (!claim || claim.s !== slug) return toAuth(req, slug, subPath);
+  // Resolve who's asking. Three ways in, in priority order:
+  //   1. a valid guest cookie (from an "anyone with the link" share),
+  //   2. a valid member cookie (signed handoff after login),
+  //   3. a fresh ?key= that matches the current share link → mint a guest session.
+  // Anything else bounces members to login. Guest sessions are re-validated
+  // against the *current* share key on every request, so revocation is instant.
+  const payload = verifyToken(req.cookies.get(APP_COOKIE)?.value);
+  let user: Row;
 
-  const role = roleFor(project.id, claim.u);
-  if (!role) return toAuth(req, slug, subPath); // membership revoked since the cookie was minted
-
-  const user = one("SELECT * FROM users WHERE id = ?", claim.u);
-  if (!user) return toAuth(req, slug, subPath);
+  if (payload?.anon && payload.s === slug && project.share_key &&
+      payload.k === keyFingerprint(project.share_key)) {
+    user = GUEST;
+  } else if (payload?.u && payload.s === slug) {
+    if (!roleFor(project.id, payload.u)) return toAuth(req, slug, subPath); // membership revoked
+    const u = one("SELECT * FROM users WHERE id = ?", payload.u);
+    if (!u) return toAuth(req, slug, subPath);
+    user = u;
+  } else {
+    const key = req.nextUrl.searchParams.get("key");
+    if (key && project.share_key && safeEqual(key, project.share_key)) {
+      return mintGuestSession(slug, subPath, req, project.share_key);
+    }
+    return toAuth(req, slug, subPath);
+  }
 
   let fresh: Row;
   try {

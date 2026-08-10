@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { appSlugFromHost } from "../lib/config";
-import { signClaim, verifyClaim } from "../lib/appauth";
+import { signClaim, signToken, verifyClaim, verifyToken } from "../lib/appauth";
 import { over, record, reset } from "../lib/ratelimit";
 
 test("appSlugFromHost: platform apex is not an app", () => {
@@ -40,6 +40,17 @@ test("verifyClaim: rejects an expired token and garbage", () => {
   assert.equal(verifyClaim(signClaim({ u: "u", s: "s" }, -1000)), null);
   assert.equal(verifyClaim("not-a-token"), null);
   assert.equal(verifyClaim(""), null);
+});
+
+test("signToken / verifyToken: round-trips an arbitrary payload, rejects tamper/expiry", () => {
+  const token = signToken({ anon: 1, s: "proj1", k: "abc123" }, 60_000);
+  const p = verifyToken(token);
+  assert.equal(p?.anon, 1);
+  assert.equal(p?.s, "proj1");
+  assert.equal(p?.k, "abc123");
+  assert.equal(verifyToken(token.slice(0, -2) + "zz"), null); // tampered mac
+  assert.equal(verifyToken(signToken({ anon: 1 }, -1000)), null); // expired
+  assert.equal(verifyToken("garbage"), null);
 });
 
 test("rate limiter: trips at the limit, resets on demand", () => {

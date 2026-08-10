@@ -1,7 +1,8 @@
 // Project CRUD + membership operations shared by the API routes.
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { DB_FILE_REL, SAMPLES_DIR, UPLOADS_DIR } from "./config";
+import { appOriginFor, DB_FILE_REL, SAMPLES_DIR, UPLOADS_DIR } from "./config";
 import {
   all, getProject, getProjectBySlug, newId, now, one, run, Row, setProject,
   STATUS_LABELS,
@@ -121,6 +122,26 @@ export function attachDatabase(projectId: string): void {
 export function detachDatabase(projectId: string): void {
   setProject(projectId, { db_engine: "" });
   fs.rmSync(path.join(appDataDirFor(projectId), "database"), { recursive: true, force: true });
+}
+
+// ---- "anyone with the link" sharing ----
+// A non-empty share_key means link access is on; the key is the secret embedded
+// in the share URL. Rotating or clearing it instantly revokes outstanding links
+// (and any guest sessions minted from them — the gateway re-checks every request).
+
+export function shareLink(projectId: string): { enabled: boolean; url: string | null } {
+  const p = getProject(projectId);
+  if (!p || !p.share_key) return { enabled: false, url: null };
+  return { enabled: true, url: `${appOriginFor(p.slug)}/?key=${p.share_key}` };
+}
+
+export function enableShareLink(projectId: string): { enabled: boolean; url: string | null } {
+  setProject(projectId, { share_key: crypto.randomBytes(18).toString("base64url") });
+  return shareLink(projectId);
+}
+
+export function disableShareLink(projectId: string): void {
+  setProject(projectId, { share_key: "" });
 }
 
 export function latestDeployment(projectId: string): Row | undefined {
