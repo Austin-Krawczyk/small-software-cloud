@@ -27,8 +27,12 @@ export const APP_PORT_END = 9500;
 // Lifecycle: apps with no traffic for this long are stopped (scale-to-zero shape).
 export const IDLE_STOP_MS = 30 * 60 * 1000;
 
-export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
-export const MAX_PROJECT_BYTES = 200 * 1024 * 1024;
+// Size caps, configurable via env (MB). MAX_UPLOAD gates the uploaded zip;
+// MAX_PROJECT gates the extracted/cloned project on disk.
+export const MAX_UPLOAD_MB = Number(process.env.SCLOUD_MAX_UPLOAD_MB ?? 50);
+export const MAX_PROJECT_MB = Number(process.env.SCLOUD_MAX_PROJECT_MB ?? 200);
+export const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
+export const MAX_PROJECT_BYTES = MAX_PROJECT_MB * 1024 * 1024;
 export const MAX_ARCHIVE_ENTRIES = 20000;
 export const BUILD_TIMEOUT_MS = 5 * 60 * 1000;
 export const HEALTH_TIMEOUT_MS = 60 * 1000;

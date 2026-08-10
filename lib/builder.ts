@@ -14,7 +14,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import AdmZip from "adm-zip";
 import {
-  BUILD_TIMEOUT_MS, MAX_ARCHIVE_ENTRIES, MAX_PROJECT_BYTES, SAMPLES_DIR, UPLOADS_DIR,
+  BUILD_TIMEOUT_MS, MAX_ARCHIVE_ENTRIES, MAX_PROJECT_BYTES, MAX_PROJECT_MB, SAMPLES_DIR, UPLOADS_DIR,
 } from "./config";
 import { Row } from "./db";
 import { npmInSandbox } from "./sandbox";
@@ -97,7 +97,7 @@ export async function fetchSource(project: Row, dest: string, log: Log): Promise
   }
 
   if (dirSize(dest) > MAX_PROJECT_BYTES) {
-    throw new BuildError("Project is too large for Small Software Cloud (limit 200 MB).");
+    throw new BuildError(`Project is too large for Small Software Cloud (limit ${MAX_PROJECT_MB} MB).`);
   }
   unwrapSingleFolder(dest);
 }
@@ -120,7 +120,7 @@ function extractZip(zipPath: string, dest: string): void {
   let totalBytes = 0;
   for (const entry of entries) totalBytes += entry.header.size;
   if (totalBytes > MAX_PROJECT_BYTES) {
-    throw new BuildError("Project is too large for Small Software Cloud (limit 200 MB).");
+    throw new BuildError(`Project is too large for Small Software Cloud (limit ${MAX_PROJECT_MB} MB).`);
   }
 
   for (const entry of entries) {
