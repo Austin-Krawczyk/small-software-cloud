@@ -8,12 +8,14 @@
     "build": "next build",
     "start": "next start",
     "test": "node --import tsx --test \"test/**/*.test.ts\"",
+    "mcp": "node mcp/server.mjs",
     "e2e": "bash scripts/e2e-test.sh"
   },
   "engines": {
     "node": ">=22"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "adm-zip": "^0.5.16",
     "next": "^15.4.0",
     "nodemailer": "^9.0.5",

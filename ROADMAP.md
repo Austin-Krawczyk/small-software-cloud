@@ -62,6 +62,8 @@ Legend: ✅ done & deployed · 🔜 next · 🪨 large/multi-part · ⛔ deliber
 
 **Platform**
 - JSON API + a tiny `smallsoftware` CLI (agent-friendly).
+- **MCP server** (`mcp/`) — an AI agent (Claude/Cursor/Codex) can create and
+  deploy an app from generated files in one call, getting back a live URL.
 - Single-VPS deploy kit: Caddy (auto-HTTPS incl. wildcard via on-demand TLS),
   systemd unit, `setup-server.sh`, `update.sh`, health endpoint, and an
   end-to-end test that deploys a Node app in Docker and checks it through the proxy.
@@ -123,4 +125,5 @@ software* deploy-and-share experience — not to rebuild AWS.
 2. **Deploy, don't configure.** Code → Deploy → URL.
 3. **Sharing is first-class.** As easy as a Google Doc.
 4. **Small by default.** Optimize for 1–20 users, not millions.
-5. **AI-native.** An agent can create, deploy, and share via the API/CLI.
+5. **AI-native.** An agent can create, deploy, and share via the API/CLI/MCP —
+   from generated files to a live URL in one call.

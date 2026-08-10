@@ -150,8 +150,16 @@ lib/            control plane: config, db, auth, projects, builder, runner, depl
 samples/        team-notes (Node), orchard-tracker (FastAPI),
                 sqlite-guestbook (Node + managed DB), hello-static
 cli/            smallsoftware CLI
+mcp/            MCP server — deploy apps from an AI agent (Claude/Cursor/Codex)
+test/           node:test unit tests (npm test)
 data/           runtime state: SQLite DB, builds, uploads, app logs (gitignored)
 ```
+
+## Deploy from an AI agent (MCP)
+
+An agent can create and deploy an app in one call — it writes the files, and
+`deploy_new_app` returns a live URL. See [mcp/README.md](mcp/README.md) for
+wiring it into Claude, Cursor, or Codex.
 
 ## What's done and what's next
 
