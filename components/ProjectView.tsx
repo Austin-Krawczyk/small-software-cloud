@@ -303,22 +303,27 @@ const ROLE_LABEL: Record<string, string> = {
 function SharingCard({ detail, canManage, onChanged }:
   { detail: Detail; canManage: boolean; onChanged: () => void }) {
   const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
 
-  async function shareWith(email: string, role: string) {
-    await fetch(`/api/projects/${detail.id}/members`, {
+  async function shareWith(email: string, role: string): Promise<{ emailed?: boolean }> {
+    const res = await fetch(`/api/projects/${detail.id}/members`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ email, role }),
     });
     onChanged();
+    return res.ok ? res.json() : {};
   }
 
   async function share(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setBusy(true);
+    setMsg(null);
     const form = e.currentTarget;
     const fd = new FormData(form);
-    await shareWith((fd.get("email") as string).trim(), fd.get("role") as string);
+    const email = (fd.get("email") as string).trim();
+    const r = await shareWith(email, fd.get("role") as string);
+    setMsg(r.emailed ? `Invite emailed to ${email}.` : `${email} added — no email sent (SMTP not configured).`);
     form.reset();
     setBusy(false);
   }
@@ -363,14 +368,17 @@ function SharingCard({ detail, canManage, onChanged }:
         ))}
       </ul>
       {canManage && (
-        <form className="share-form" onSubmit={share}>
-          <input name="email" type="email" required placeholder="teammate@example.com" />
-          <select name="role" defaultValue="collaborator" className="role-select">
-            <option value="collaborator">can use</option>
-            <option value="editor">can edit</option>
-          </select>
-          <button className="btn btn-primary" type="submit" disabled={busy}>Share</button>
-        </form>
+        <>
+          <form className="share-form" onSubmit={share}>
+            <input name="email" type="email" required placeholder="teammate@example.com" />
+            <select name="role" defaultValue="collaborator" className="role-select">
+              <option value="collaborator">can use</option>
+              <option value="editor">can edit</option>
+            </select>
+            <button className="btn btn-primary" type="submit" disabled={busy}>Share</button>
+          </form>
+          {msg && <p className="muted" style={{ marginTop: "0.5rem", fontSize: "0.85rem" }}>{msg}</p>}
+        </>
       )}
     </div>
   );

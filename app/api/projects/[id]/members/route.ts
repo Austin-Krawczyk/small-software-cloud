@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jsonError, requireProject } from "@/lib/api";
+import { appOriginFor } from "@/lib/config";
 import { run } from "@/lib/db";
+import { mailConfigured, sendInviteEmail } from "@/lib/mail";
 import { invitesOf, membersOf, ShareRole, shareWithEmail } from "@/lib/projects";
 
 type Params = { params: Promise<{ id: string }> };
@@ -16,13 +18,25 @@ export async function GET(_req: NextRequest, { params }: Params) {
 // body: { email, role?: "collaborator" | "editor" }
 export async function POST(req: NextRequest, { params }: Params) {
   const { id } = await params;
-  const { error } = await requireProject(id, { need: "manage" });
+  const { actor, error } = await requireProject(id, { need: "manage" });
   if (error) return error;
   const { email, role } = await req.json().catch(() => ({}));
   if (!email?.trim() || !email.includes("@")) return jsonError(422, "A valid email is required.");
   const shareRole: ShareRole = role === "editor" ? "editor" : "collaborator";
   const status = shareWithEmail(id, email, shareRole);
-  return NextResponse.json({ ok: true, status });
+
+  // Notify the invitee (best-effort; never blocks or fails the share).
+  if (status === "member_added" || status === "invite_pending") {
+    void sendInviteEmail({
+      to: email.trim(),
+      projectName: actor!.project!.name,
+      appUrl: appOriginFor(actor!.project!.slug),
+      inviterName: actor!.user.name,
+      role: shareRole,
+      needsSignup: status === "invite_pending",
+    });
+  }
+  return NextResponse.json({ ok: true, status, emailed: mailConfigured() });
 }
 
 // Remove a member (body: {user_id}) or a pending invite (body: {email}).
