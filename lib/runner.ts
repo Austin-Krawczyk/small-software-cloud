@@ -32,7 +32,9 @@ export interface Runner {
   // `appEnv` is the project's own environment variables/secrets, layered on top
   // of a minimal base env — the platform's own env is never inherited, so an app
   // sees only PORT/HOST and what its owner configured.
-  start(projectId: string, result: BuildResult, port: number, appEnv: Record<string, string>): Promise<number>;
+  // `dataDir` is the app's durable storage on the host; the runner makes it
+  // available to the app and points SCLOUD_DATA_DIR at it.
+  start(projectId: string, result: BuildResult, port: number, appEnv: Record<string, string>, dataDir: string): Promise<number>;
   stop(projectId: string, pid: number | null): void;
   isRunning(projectId: string, pid: number | null): boolean;
   // Reconcile after a control-plane restart (clear anything the old process left
@@ -40,8 +42,12 @@ export interface Runner {
   resetAll(): void;
 }
 
-// Keys an app is not allowed to override — they define how it's launched.
-const RESERVED_ENV = new Set(["PORT", "HOST", "PATH", "SYSTEMROOT", "NODE_ENV"]);
+// Keys an app is not allowed to override — they define how it's launched or where
+// its managed storage lives.
+const RESERVED_ENV = new Set(["PORT", "HOST", "PATH", "SYSTEMROOT", "NODE_ENV", "SCLOUD_DATA_DIR"]);
+
+// Path the app's durable storage is mounted at inside a container.
+const CONTAINER_DATA_DIR = "/data";
 
 function safeAppEnv(appEnv: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
@@ -66,12 +72,14 @@ export async function freePort(): Promise<number> {
 class SubprocessRunner implements Runner {
   name = "subprocess";
 
-  async start(projectId: string, result: BuildResult, port: number, appEnv: Record<string, string>): Promise<number> {
+  async start(projectId: string, result: BuildResult, port: number, appEnv: Record<string, string>, dataDir: string): Promise<number> {
     // Minimal environment: platform env vars and secrets are NOT inherited.
+    // The app's durable storage is a real host path here (no container).
     const env: Record<string, string> = {
       ...safeAppEnv(appEnv),
       PORT: String(port),
       HOST: APP_HOST,
+      SCLOUD_DATA_DIR: dataDir,
       SYSTEMROOT: process.env.SYSTEMROOT ?? "",
       TEMP: process.env.TEMP ?? "",
       TMP: process.env.TMP ?? "",
@@ -140,12 +148,12 @@ class SubprocessRunner implements Runner {
 class DockerRunner implements Runner {
   name = "docker";
 
-  async start(projectId: string, result: BuildResult, port: number, appEnv: Record<string, string>): Promise<number> {
+  async start(projectId: string, result: BuildResult, port: number, appEnv: Record<string, string>, dataDir: string): Promise<number> {
     const name = containerName(projectId);
 
-    // Run as the same uid/gid that owns the build files so the mounted code is
-    // readable/writable but the container is still non-root (assuming the
-    // control plane itself runs as a non-root user).
+    // Run as the same uid/gid that owns the build files so the mounted code and
+    // data are readable/writable but the container is still non-root (assuming
+    // the control plane itself runs as a non-root user).
     const st = fs.statSync(result.buildDir);
     const user = `${st.uid}:${st.gid}`;
 
@@ -153,8 +161,12 @@ class DockerRunner implements Runner {
     const inner = this.launchCmd(result);
 
     // Base env: bind to all interfaces INSIDE the container so the published
-    // loopback port reaches the app. Platform secrets are never passed.
-    const envArgs = ["-e", "PORT=8080", "-e", "HOST=0.0.0.0", "-e", "HOME=/tmp", "-e", "NODE_ENV=production"];
+    // loopback port reaches the app. Platform secrets are never passed. The app's
+    // durable storage is bind-mounted read-write at /data.
+    const envArgs = [
+      "-e", "PORT=8080", "-e", "HOST=0.0.0.0", "-e", "HOME=/tmp",
+      "-e", "NODE_ENV=production", "-e", `SCLOUD_DATA_DIR=${CONTAINER_DATA_DIR}`,
+    ];
     for (const [k, v] of Object.entries(safeAppEnv(appEnv))) envArgs.push("-e", `${k}=${v}`);
 
     try { execFileSync("docker", ["rm", "-f", name], { stdio: "ignore" }); } catch {}
@@ -165,6 +177,7 @@ class DockerRunner implements Runner {
         "--memory", "256m", "--cpus", "0.5", "--pids-limit", "128",
         "--user", user, "--security-opt", "no-new-privileges",
         "-v", `${result.buildDir}:/srv/app`, "-w", "/srv/app",
+        "-v", `${dataDir}:${CONTAINER_DATA_DIR}`,
         ...envArgs,
         "-p", `${APP_HOST}:${port}:8080`,
         image, ...inner,

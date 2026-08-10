@@ -2,11 +2,28 @@
 //
 // Note what is MISSING here: no auth, no user management, no sessions.
 // The platform handles all of that; the app just reads X-SmallSoftware-User.
+//
+// Notes are saved to SCLOUD_DATA_DIR — the durable folder the platform gives
+// every app — so they survive restarts, idle-stops, and redeploys.
 const http = require("node:http");
+const fs = require("node:fs");
+const path = require("node:path");
 
-const notes = [
-  { text: "Welcome! Notes anyone on the team adds show up here.", by: "sample data" },
-];
+const DATA_DIR = process.env.SCLOUD_DATA_DIR || ".";
+const NOTES_FILE = path.join(DATA_DIR, "notes.json");
+
+function loadNotes() {
+  try {
+    return JSON.parse(fs.readFileSync(NOTES_FILE, "utf8"));
+  } catch {
+    return [{ text: "Welcome! Notes anyone on the team adds show up here.", by: "sample data" }];
+  }
+}
+function saveNotes(notes) {
+  fs.writeFileSync(NOTES_FILE, JSON.stringify(notes));
+}
+
+let notes = loadNotes();
 
 const page = (user, prefix) => `<!doctype html>
 <html><head><meta charset="utf-8"><title>Team Notes</title>
@@ -42,7 +59,7 @@ const server = http.createServer((req, res) => {
       const text = decodeURIComponent(
         (new URLSearchParams(body).get("text") || "").replace(/\+/g, " ")
       ).trim();
-      if (text) notes.push({ text, by: user });
+      if (text) { notes.push({ text, by: user }); saveNotes(notes); }
       res.writeHead(303, { location: `${prefix}/` });
       res.end();
     });

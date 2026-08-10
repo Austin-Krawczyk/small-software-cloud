@@ -61,6 +61,11 @@ it, and fetches it through the platform proxy.
 Code sources: a public git URL, an uploaded zip, or a built-in sample.
 Deliberately few frameworks — this is a product decision, not a limitation to fix.
 
+**Durable storage:** every app gets a persistent folder at the path in its
+`SCLOUD_DATA_DIR` env var (mounted at `/data` in production). Files written there
+survive restarts, idle-stops, and redeploys — so an app can keep a SQLite file,
+JSON, uploads, etc. without an external database. See `samples/team-notes`.
+
 ## How it works
 
 ```

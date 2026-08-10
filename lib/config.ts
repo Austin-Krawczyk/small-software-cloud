@@ -11,7 +11,8 @@ export const BASE_DIR = process.cwd();
 export const DATA_DIR = process.env.SCLOUD_DATA_DIR
   ? path.resolve(process.env.SCLOUD_DATA_DIR)
   : path.join(BASE_DIR, "data");
-export const BUILDS_DIR = path.join(DATA_DIR, "builds"); // one folder per project
+export const BUILDS_DIR = path.join(DATA_DIR, "builds"); // one folder per project (wiped on each deploy)
+export const APPDATA_DIR = path.join(DATA_DIR, "appdata"); // durable per-app storage (survives redeploys)
 export const UPLOADS_DIR = path.join(DATA_DIR, "uploads"); // uploaded zips
 export const APP_LOGS_DIR = path.join(DATA_DIR, "applogs"); // stdout of running apps
 export const DB_PATH = path.join(DATA_DIR, "smallcloud.db");
@@ -81,7 +82,7 @@ export function appSlugFromHost(host: string | null | undefined): string | null 
 }
 
 export function ensureDirs(): void {
-  for (const d of [DATA_DIR, BUILDS_DIR, UPLOADS_DIR, APP_LOGS_DIR]) {
+  for (const d of [DATA_DIR, BUILDS_DIR, APPDATA_DIR, UPLOADS_DIR, APP_LOGS_DIR]) {
     fs.mkdirSync(d, { recursive: true });
   }
 }

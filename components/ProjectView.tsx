@@ -206,6 +206,8 @@ function EnvVarsCard({ projectId }: { projectId: string }) {
       <h3>Environment variables</h3>
       <p className="muted">
         Secrets and config passed to your app at startup. Redeploy or restart to apply.
+        Your app also gets a durable storage folder at <code>SCLOUD_DATA_DIR</code> that
+        survives redeploys.
       </p>
       {vars.length > 0 && (
         <ul className="members">

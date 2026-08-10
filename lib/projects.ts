@@ -6,7 +6,7 @@ import {
   all, getProject, getProjectBySlug, newId, now, one, run, Row, setProject,
   STATUS_LABELS,
 } from "./db";
-import { appUrl, buildDirFor, stopProject } from "./deploy";
+import { appDataDirFor, appUrl, buildDirFor, stopProject } from "./deploy";
 
 export function slugify(name: string): string {
   const base = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "app";
@@ -117,6 +117,7 @@ export async function deleteProject(projectId: string): Promise<void> {
   }
   run("DELETE FROM projects WHERE id = ?", projectId);
   fs.rmSync(buildDirFor(projectId), { recursive: true, force: true });
+  fs.rmSync(appDataDirFor(projectId), { recursive: true, force: true });
   fs.rmSync(path.join(UPLOADS_DIR, `${projectId}.zip`), { force: true });
 }
 

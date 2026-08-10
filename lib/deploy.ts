@@ -16,7 +16,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import {
-  APP_LOGS_DIR, BUILDS_DIR, HEALTH_TIMEOUT_MS, IDLE_STOP_MS, APP_HOST,
+  APP_LOGS_DIR, APPDATA_DIR, BUILDS_DIR, HEALTH_TIMEOUT_MS, IDLE_STOP_MS, APP_HOST,
   appOriginFor, ensureDirs,
 } from "./config";
 import {
@@ -43,6 +43,8 @@ async function withLock<T>(projectId: string, fn: () => Promise<T>): Promise<T> 
 }
 
 export const buildDirFor = (projectId: string) => path.join(BUILDS_DIR, projectId);
+// Durable per-app storage, kept OUTSIDE the build dir so redeploys don't wipe it.
+export const appDataDirFor = (projectId: string) => path.join(APPDATA_DIR, projectId);
 // Each app lives on its own origin (subdomain) — see lib/config.ts.
 export const appUrl = (slug: string) => `${appOriginFor(slug)}/`;
 export const touchActivity = (projectId: string) => lastActivity.set(projectId, Date.now());
@@ -120,7 +122,9 @@ async function startInstance(
     return { port: null, pid: null };
   }
   const port = await freePort();
-  const pid = await getRunner().start(project.id, result, port, envMap(project.id));
+  const dataDir = appDataDirFor(project.id);
+  fs.mkdirSync(dataDir, { recursive: true }); // persists across redeploys
+  const pid = await getRunner().start(project.id, result, port, envMap(project.id), dataDir);
   log("✓ Application started");
   await waitHealthy(project.id, port, pid);
   log("✓ Health check passed");
