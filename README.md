@@ -1,0 +1,126 @@
+# ☁️ Small Software Cloud
+
+Deploy and share small, purpose-built applications the way you share a document.
+
+**Build a tool → click Deploy → share the link.**
+
+The target user is a person or small team whose AI coding agent just wrote them a
+custom app for a specific workflow — and who has no interest in EC2, Docker,
+Kubernetes, IAM, DNS, or SSL. The MVP demonstrates the complete loop:
+
+```
+Create → Deploy → Access → Share
+```
+
+## Running the platform
+
+Requirements: Node.js 22+ (uses the built-in `node:sqlite`), git.
+Optional: Python 3.10+ (to deploy Python apps), Docker (for container isolation).
+
+```bash
+npm install
+npm run dev        # http://localhost:3000
+```
+
+Everything the platform stores lives in `./data` — delete it for a fresh install.
+
+## The 5-minute demo
+
+1. Sign up at http://localhost:3000.
+2. **+ New app** → name it → *Start from a sample app* → `team-notes` → **Create app**.
+3. Click **Deploy**. Watch the log stream; ~5 seconds later the app is **Running**.
+4. Click **Open** — the app is live on its own origin, `http://team-notes.localhost:3000/`,
+   and knows who you are (browsers resolve `*.localhost` natively; no hosts-file edits).
+5. In **Sharing**, enter a teammate's email → **Share**.
+6. The teammate signs up with that email and immediately sees and can open the app.
+   People who aren't shared on it get *Access denied*.
+
+## What users can deploy
+
+| Type | Detected by | How it runs |
+|---|---|---|
+| Static site | `index.html` | served directly by the platform |
+| Node.js | `package.json` | `npm install` (+ `npm run build` if present), then `npm start` / `server.js`, listening on `process.env.PORT` |
+| Python / FastAPI | `main.py` or `app.py` exposing `app` | own virtualenv, `uvicorn` |
+
+Code sources: a public git URL, an uploaded zip, or a built-in sample.
+Deliberately few frameworks — this is a product decision, not a limitation to fix.
+
+## How it works
+
+```
+User ──► Next.js dashboard (React)
+              │
+              ▼
+        Control plane  (app/api/* routes → lib/*, SQLite via node:sqlite)
+        projects · users · permissions · deployments · logs
+              │  deployment job
+              ▼
+        Build system   (lib/builder.ts: fetch → detect → install → build)
+              ▼
+        Runner         (lib/runner.ts: subprocess today, Docker when available)
+              ▼
+        App gateway    (/app/{slug}/… — the authenticating reverse proxy)
+```
+
+Key properties:
+
+- **Apps never implement auth.** Every request to an app passes the platform's
+  gateway, which checks a signed app-session cookie and project membership,
+  then forwards the request with `X-SmallSoftware-User` so apps can personalize.
+- **Each app has its own origin.** Apps are served at `{slug}.localhost:3000`
+  (configurable via `SCLOUD_BASE_HOST` for a real wildcard domain), so app code
+  is fully isolated from the dashboard's cookies and API — see SECURITY.md.
+- **Stable URLs.** Each project gets `http://{its-slug}.{base-host}/` forever;
+  old `/app/{slug}` links redirect.
+- **Scale-to-zero shape.** Idle apps are stopped after 30 minutes; a request to
+  a stopped app transparently restarts it (sub-second for Node apps).
+- **Sharing is Google-Docs-style.** Share with any email; if they don't have an
+  account yet, the invite converts to access the moment they sign up.
+- **Roles:** `owner` (deploy, edit, share, delete) and `collaborator` (open the
+  app, see basic info).
+
+## API (for AI agents)
+
+Create a token on `/account`, then `Authorization: Bearer <token>`:
+
+```
+POST /api/projects                 {name, description?, repository_url? | sample?}
+GET  /api/projects
+GET  /api/projects/:id             (includes members + latest deployment/logs)
+POST /api/projects/:id/code        (multipart zip: code_zip)
+POST /api/projects/:id/deploy
+GET  /api/deployments/:id
+GET  /api/projects/:id/access
+POST /api/projects/:id/members     {email}
+GET  /api/projects/:id/env         (owner only)
+PUT  /api/projects/:id/env         {key, value}   — applied on next deploy/restart
+DELETE /api/projects/:id/env       {key}
+```
+
+And the matching CLI:
+
+```bash
+node cli/smallsoftware.mjs login   # server + token, stored in ~/.smallsoftware.json
+node cli/smallsoftware.mjs init    # register the current folder as an app
+node cli/smallsoftware.mjs deploy  # zip → upload → deploy → prints the live URL
+```
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for the honest breakdown of MVP-level vs
+production-grade guarantees. Summary: apps run as restricted subprocesses with
+a minimal environment on this host (Docker container isolation is selected
+automatically when Docker is present), and platform credentials are never
+exposed to deployed applications.
+
+## Repo layout
+
+```
+app/            Next.js pages + API routes (+ /app/[slug] gateway)
+components/     React client components
+lib/            control plane: config, db, auth, projects, builder, runner, deploy
+samples/        team-notes (Node), orchard-tracker (FastAPI), hello-static
+cli/            smallsoftware CLI
+data/           runtime state: SQLite DB, builds, uploads, app logs (gitignored)
+```
