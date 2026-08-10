@@ -19,7 +19,7 @@ import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import {
-  APP_HOST, APP_LOGS_DIR, APP_PORT_END, APP_PORT_START, NODE_IMAGE, PYTHON_IMAGE,
+  APP_HOST, APP_LOGS_DIR, APP_PORT_END, APP_PORT_START, DB_FILE_REL, NODE_IMAGE, PYTHON_IMAGE,
 } from "./config";
 import { BuildResult, venvPython } from "./builder";
 
@@ -33,8 +33,9 @@ export interface Runner {
   // of a minimal base env — the platform's own env is never inherited, so an app
   // sees only PORT/HOST and what its owner configured.
   // `dataDir` is the app's durable storage on the host; the runner makes it
-  // available to the app and points SCLOUD_DATA_DIR at it.
-  start(projectId: string, result: BuildResult, port: number, appEnv: Record<string, string>, dataDir: string): Promise<number>;
+  // available to the app and points SCLOUD_DATA_DIR at it. `dbEngine` ('' or
+  // 'sqlite') controls whether managed database env vars are injected.
+  start(projectId: string, result: BuildResult, port: number, appEnv: Record<string, string>, dataDir: string, dbEngine: string): Promise<number>;
   stop(projectId: string, pid: number | null): void;
   isRunning(projectId: string, pid: number | null): boolean;
   // Reconcile after a control-plane restart (clear anything the old process left
@@ -48,6 +49,18 @@ const RESERVED_ENV = new Set(["PORT", "HOST", "PATH", "SYSTEMROOT", "NODE_ENV", 
 
 // Path the app's durable storage is mounted at inside a container.
 const CONTAINER_DATA_DIR = "/data";
+
+// Managed-database env vars, given the path the app's data dir appears at (a
+// container path like /data, or a host path under the subprocess runner).
+function managedDbEnv(dataPath: string, dbEngine: string): Record<string, string> {
+  if (dbEngine !== "sqlite") return {};
+  const file = `${dataPath}/${DB_FILE_REL}`;
+  const urlPath = file.replace(/\\/g, "/"); // tidy for the URL form on Windows dev
+  return {
+    SCLOUD_DATABASE_PATH: file,
+    DATABASE_URL: `sqlite:///${urlPath}`,
+  };
+}
 
 function safeAppEnv(appEnv: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
@@ -72,10 +85,13 @@ export async function freePort(): Promise<number> {
 class SubprocessRunner implements Runner {
   name = "subprocess";
 
-  async start(projectId: string, result: BuildResult, port: number, appEnv: Record<string, string>, dataDir: string): Promise<number> {
+  async start(projectId: string, result: BuildResult, port: number, appEnv: Record<string, string>, dataDir: string, dbEngine: string): Promise<number> {
     // Minimal environment: platform env vars and secrets are NOT inherited.
     // The app's durable storage is a real host path here (no container).
+    // Managed DB vars come first so owner-set env can still override them, but
+    // launch keys always win (safeAppEnv strips them from owner env).
     const env: Record<string, string> = {
+      ...managedDbEnv(dataDir, dbEngine),
       ...safeAppEnv(appEnv),
       PORT: String(port),
       HOST: APP_HOST,
@@ -148,7 +164,7 @@ class SubprocessRunner implements Runner {
 class DockerRunner implements Runner {
   name = "docker";
 
-  async start(projectId: string, result: BuildResult, port: number, appEnv: Record<string, string>, dataDir: string): Promise<number> {
+  async start(projectId: string, result: BuildResult, port: number, appEnv: Record<string, string>, dataDir: string, dbEngine: string): Promise<number> {
     const name = containerName(projectId);
 
     // Run as the same uid/gid that owns the build files so the mounted code and
@@ -167,6 +183,8 @@ class DockerRunner implements Runner {
       "-e", "PORT=8080", "-e", "HOST=0.0.0.0", "-e", "HOME=/tmp",
       "-e", "NODE_ENV=production", "-e", `SCLOUD_DATA_DIR=${CONTAINER_DATA_DIR}`,
     ];
+    // Managed DB vars first, then owner env (so an owner can override DATABASE_URL).
+    for (const [k, v] of Object.entries(managedDbEnv(CONTAINER_DATA_DIR, dbEngine))) envArgs.push("-e", `${k}=${v}`);
     for (const [k, v] of Object.entries(safeAppEnv(appEnv))) envArgs.push("-e", `${k}=${v}`);
 
     try { execFileSync("docker", ["rm", "-f", name], { stdio: "ignore" }); } catch {}

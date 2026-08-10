@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS projects (
   status TEXT NOT NULL DEFAULT 'not_deployed', -- not_deployed | building | running | failed | stopped
   app_type TEXT NOT NULL DEFAULT '',           -- static | node | python (from last successful build)
   static_dir TEXT NOT NULL DEFAULT '',         -- static: subfolder holding index.html ('' = root)
+  db_engine TEXT NOT NULL DEFAULT '',          -- '' = no database | sqlite (managed, injected as DATABASE_URL)
   port INTEGER,
   pid INTEGER,
   created_at INTEGER NOT NULL,
@@ -97,6 +98,9 @@ function migrate(conn: DatabaseSync): void {
   const cols = (conn.prepare("PRAGMA table_info(projects)").all() as Row[]).map((c) => c.name);
   if (!cols.includes("static_dir")) {
     conn.exec("ALTER TABLE projects ADD COLUMN static_dir TEXT NOT NULL DEFAULT ''");
+  }
+  if (!cols.includes("db_engine")) {
+    conn.exec("ALTER TABLE projects ADD COLUMN db_engine TEXT NOT NULL DEFAULT ''");
   }
 }
 

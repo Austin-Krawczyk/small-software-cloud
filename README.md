@@ -63,8 +63,13 @@ Deliberately few frameworks — this is a product decision, not a limitation to 
 
 **Durable storage:** every app gets a persistent folder at the path in its
 `SCLOUD_DATA_DIR` env var (mounted at `/data` in production). Files written there
-survive restarts, idle-stops, and redeploys — so an app can keep a SQLite file,
-JSON, uploads, etc. without an external database. See `samples/team-notes`.
+survive restarts, idle-stops, and redeploys — so an app can keep JSON, uploads,
+etc. without an external database. See `samples/team-notes`.
+
+**Managed database:** attach a SQLite database to a project in one click (no
+server to run). The platform injects `DATABASE_URL` (and `SCLOUD_DATABASE_PATH`)
+and keeps the file in durable storage, so it persists across redeploys. See
+`samples/sqlite-guestbook`. The engine abstraction leaves room for Postgres later.
 
 ## How it works
 
@@ -142,7 +147,8 @@ exposed to deployed applications.
 app/            Next.js pages + API routes (+ /app/[slug] gateway)
 components/     React client components
 lib/            control plane: config, db, auth, projects, builder, runner, deploy
-samples/        team-notes (Node), orchard-tracker (FastAPI), hello-static
+samples/        team-notes (Node), orchard-tracker (FastAPI),
+                sqlite-guestbook (Node + managed DB), hello-static
 cli/            smallsoftware CLI
 data/           runtime state: SQLite DB, builds, uploads, app logs (gitignored)
 ```

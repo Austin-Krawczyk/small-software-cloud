@@ -36,6 +36,10 @@ export const HEALTH_TIMEOUT_MS = 60 * 1000;
 // Container images for building/running apps, and the resource ceiling for the
 // throwaway build container. Builds run in this sandbox (see lib/sandbox.ts) so
 // untrusted install scripts can't touch the control plane's data or secrets.
+// Managed database: a project's SQLite file lives at this path under its durable
+// data dir, so it persists across redeploys and is backed up with everything else.
+export const DB_FILE_REL = "database/app.sqlite";
+
 export const NODE_IMAGE = process.env.SCLOUD_NODE_IMAGE ?? "node:22-slim";
 export const PYTHON_IMAGE = process.env.SCLOUD_PYTHON_IMAGE ?? "python:3.12-slim";
 export const BUILD_MEMORY = process.env.SCLOUD_BUILD_MEMORY ?? "1g";

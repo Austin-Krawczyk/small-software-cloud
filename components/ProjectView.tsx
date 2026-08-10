@@ -90,6 +90,7 @@ export default function ProjectView({ projectId }: { projectId: string }) {
           </div>
 
           {canEdit && <CodeCard detail={detail} onChanged={load} />}
+          {canEdit && <DatabaseCard projectId={projectId} />}
           {canEdit && <EnvVarsCard projectId={projectId} />}
         </div>
 
@@ -163,6 +164,63 @@ function CodeCard({ detail, onChanged }: { detail: Detail; onChanged: () => void
         <label>…or upload a zip <input type="file" name="code_zip" accept=".zip" /></label>
         <button className="btn" type="submit" disabled={busy}>Save code source</button>
       </form>
+    </div>
+  );
+}
+
+function fmtBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function DatabaseCard({ projectId }: { projectId: string }) {
+  const [info, setInfo] = useState<{ attached: boolean; url: string | null; size: number } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    const res = await fetch(`/api/projects/${projectId}/database`, { cache: "no-store" });
+    if (res.ok) setInfo(await res.json());
+  }, [projectId]);
+  useEffect(() => { load(); }, [load]);
+
+  async function attach() {
+    setBusy(true);
+    await fetch(`/api/projects/${projectId}/database`, { method: "POST" });
+    setBusy(false);
+    load();
+  }
+  async function detach() {
+    if (!confirm("Remove this database? Its data will be permanently deleted.")) return;
+    setBusy(true);
+    await fetch(`/api/projects/${projectId}/database`, { method: "DELETE" });
+    setBusy(false);
+    load();
+  }
+
+  return (
+    <div className="card">
+      <h3>Database</h3>
+      {!info ? (
+        <p className="muted">Loading…</p>
+      ) : info.attached ? (
+        <>
+          <p className="muted">
+            SQLite · {fmtBytes(info.size)}. Your app connects via <code>DATABASE_URL</code>
+            {" "}(or <code>SCLOUD_DATABASE_PATH</code>). Persists across redeploys.
+          </p>
+          <p className="app-url"><code>{info.url}</code></p>
+          <button className="link-btn" onClick={detach} disabled={busy}>Remove database</button>
+        </>
+      ) : (
+        <>
+          <p className="muted">
+            Add a managed SQLite database — no server to run. It's injected as
+            {" "}<code>DATABASE_URL</code> and kept in durable storage.
+          </p>
+          <button className="btn" onClick={attach} disabled={busy}>Add a database</button>
+        </>
+      )}
     </div>
   );
 }

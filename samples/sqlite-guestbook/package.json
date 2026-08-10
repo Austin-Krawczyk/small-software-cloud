@@ -1,0 +1,6 @@
+{
+  "name": "sqlite-guestbook",
+  "version": "1.0.0",
+  "description": "A tiny guestbook backed by a managed SQLite database",
+  "scripts": { "start": "node server.js" }
+}

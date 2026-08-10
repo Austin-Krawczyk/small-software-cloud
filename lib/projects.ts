@@ -1,7 +1,7 @@
 // Project CRUD + membership operations shared by the API routes.
 import fs from "node:fs";
 import path from "node:path";
-import { SAMPLES_DIR, UPLOADS_DIR } from "./config";
+import { DB_FILE_REL, SAMPLES_DIR, UPLOADS_DIR } from "./config";
 import {
   all, getProject, getProjectBySlug, newId, now, one, run, Row, setProject,
   STATUS_LABELS,
@@ -83,6 +83,44 @@ export function membersOf(projectId: string): Row[] {
 
 export function invitesOf(projectId: string): Row[] {
   return all("SELECT email, role FROM invites WHERE project_id = ?", projectId);
+}
+
+// ---- managed database ----
+
+// The app sees its database at the container path (/data/...) in production;
+// that's the connection info we show the owner.
+const RUNTIME_DB_PATH = `/data/${DB_FILE_REL}`;
+
+export function databaseInfo(projectId: string) {
+  const project = getProject(projectId);
+  const engine = project?.db_engine || "";
+  if (engine !== "sqlite") {
+    return { attached: false, engine: "", url: null as string | null, path: null as string | null, size: 0 };
+  }
+  const base = path.join(appDataDirFor(projectId), DB_FILE_REL);
+  let size = 0;
+  for (const suffix of ["", "-wal", "-shm"]) {
+    try { size += fs.statSync(base + suffix).size; } catch {}
+  }
+  return {
+    attached: true,
+    engine: "sqlite",
+    url: `sqlite:///${RUNTIME_DB_PATH}`,
+    path: RUNTIME_DB_PATH,
+    size,
+  };
+}
+
+export function attachDatabase(projectId: string): void {
+  fs.mkdirSync(path.join(appDataDirFor(projectId), "database"), { recursive: true });
+  setProject(projectId, { db_engine: "sqlite" });
+}
+
+// Detach and delete the database files (irreversible). Keeps the rest of the
+// app's durable storage intact.
+export function detachDatabase(projectId: string): void {
+  setProject(projectId, { db_engine: "" });
+  fs.rmSync(path.join(appDataDirFor(projectId), "database"), { recursive: true, force: true });
 }
 
 export function latestDeployment(projectId: string): Row | undefined {

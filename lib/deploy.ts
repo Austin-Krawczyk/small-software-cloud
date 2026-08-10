@@ -124,7 +124,9 @@ async function startInstance(
   const port = await freePort();
   const dataDir = appDataDirFor(project.id);
   fs.mkdirSync(dataDir, { recursive: true }); // persists across redeploys
-  const pid = await getRunner().start(project.id, result, port, envMap(project.id), dataDir);
+  const dbEngine = project.db_engine || "";
+  if (dbEngine === "sqlite") fs.mkdirSync(path.join(dataDir, "database"), { recursive: true });
+  const pid = await getRunner().start(project.id, result, port, envMap(project.id), dataDir, dbEngine);
   log("✓ Application started");
   await waitHealthy(project.id, port, pid);
   log("✓ Health check passed");
