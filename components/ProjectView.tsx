@@ -79,6 +79,7 @@ export default function ProjectView({ projectId }: { projectId: string }) {
                   onClick={() => act(`/api/projects/${projectId}/stop`)}>Stop</button>
               )}
               {running && <a className="btn" href={detail.app_path} target="_blank">Open</a>}
+              <CopyLinkButton url={detail.app_path} />
             </div>
           </div>
 
@@ -89,6 +90,7 @@ export default function ProjectView({ projectId }: { projectId: string }) {
             </pre>
           </div>
 
+          {canEdit && <SettingsCard detail={detail} onChanged={load} />}
           {canEdit && <CodeCard detail={detail} onChanged={load} />}
           {canEdit && <DatabaseCard projectId={projectId} />}
           {canEdit && <EnvVarsCard projectId={projectId} />}
@@ -164,6 +166,58 @@ function CodeCard({ detail, onChanged }: { detail: Detail; onChanged: () => void
         <label>…or upload a zip <input type="file" name="code_zip" accept=".zip" /></label>
         <button className="btn" type="submit" disabled={busy}>Save code source</button>
       </form>
+    </div>
+  );
+}
+
+function CopyLinkButton({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button className="btn" onClick={async () => {
+      try {
+        await navigator.clipboard.writeText(url);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      } catch { /* clipboard blocked */ }
+    }}>
+      {copied ? "Copied!" : "Copy link"}
+    </button>
+  );
+}
+
+function SettingsCard({ detail, onChanged }: { detail: Detail; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function submit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setBusy(true);
+    setSaved(false);
+    const fd = new FormData(e.currentTarget);
+    await fetch(`/api/projects/${detail.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: fd.get("name"), description: fd.get("description") }),
+    });
+    setBusy(false);
+    setSaved(true);
+    onChanged();
+  }
+
+  return (
+    <div className="card">
+      <h3>Settings</h3>
+      <form onSubmit={submit} className="stack">
+        <label>Name <input name="name" defaultValue={detail.name} required /></label>
+        <label>Description
+          <input name="description" defaultValue={detail.description ?? ""} placeholder="What does it do?" />
+        </label>
+        <button className="btn" type="submit" disabled={busy}>Save</button>
+        {saved && <span className="muted" style={{ marginLeft: "0.5rem", fontSize: "0.85rem" }}>Saved.</span>}
+      </form>
+      <p className="muted" style={{ fontSize: "0.8rem", marginTop: "0.5rem" }}>
+        The app's URL (<code>{detail.app_path}</code>) doesn't change when you rename.
+      </p>
     </div>
   );
 }
