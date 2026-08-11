@@ -204,15 +204,25 @@ export async function stopProject(projectId: string): Promise<void> {
   });
 }
 
+// Cheap check: is this app serving right now (no wake triggered)? Static apps
+// are always "live" (served from disk); process apps must be running.
+export function appIsLive(p: Row): boolean {
+  return p.status === "running" &&
+    (p.app_type === "static" || getRunner().isRunning(p.id, p.pid));
+}
+
+// Fire-and-forget wake, for the "waking up…" interstitial. Idempotent — if the
+// app is already coming up, ensureRunning's lock makes this a no-op.
+export function wakeApp(project: Row): void {
+  void ensureRunning(project).catch(() => {});
+}
+
 // Called by the proxy. Wakes a stopped app; returns a fresh project row.
 // Throws Error with a user-facing message if the app can't serve.
 export async function ensureRunning(project: Row): Promise<Row> {
   touchActivity(project.id);
 
-  const alive = (p: Row) =>
-    p.status === "running" &&
-    (p.app_type === "static" || getRunner().isRunning(p.id, p.pid));
-
+  const alive = appIsLive;
   if (alive(project)) return project;
 
   if (!["running", "stopped"].includes(project.status) || !project.app_type) {

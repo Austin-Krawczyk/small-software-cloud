@@ -18,7 +18,7 @@ import {
 } from "@/lib/config";
 import { getProjectBySlug, one, roleFor, Row } from "@/lib/db";
 import { signToken, verifyToken } from "@/lib/appauth";
-import { buildDirFor, ensureRunning, initPlatform } from "@/lib/deploy";
+import { appIsLive, buildDirFor, ensureRunning, initPlatform, wakeApp } from "@/lib/deploy";
 
 // Fingerprint of the current share key, embedded in guest cookies so rotating or
 // disabling the link instantly invalidates sessions minted from the old link.
@@ -51,6 +51,46 @@ function page(title: string, body: string, status: number): NextResponse {
      <h2>${title}</h2><p>${body}</p><p><a href="${platformOrigin()}/">Back to Small Software Cloud</a></p></body></html>`,
     { status, headers: { "content-type": "text/html" } }
   );
+}
+
+// Self-refreshing splash shown while a paused app cold-starts. It reloads the
+// same URL every ~1.5s (counting attempts in the hash) until the app answers;
+// after ~30s it shows a friendly "still starting" fallback.
+function wakingPage(appName: string): NextResponse {
+  const name = appName.replace(/[<&>]/g, "");
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Waking up…</title>
+<style>
+  :root{color-scheme:light dark} html,body{height:100%;margin:0}
+  body{display:grid;place-items:center;font-family:-apple-system,"Segoe UI",system-ui,sans-serif;background:#f7f7f5;color:#1a1a1a}
+  @media (prefers-color-scheme:dark){body{background:#14161a;color:#eceef1}}
+  .box{text-align:center;max-width:22rem;padding:2rem}
+  .sp{width:34px;height:34px;margin:0 auto 1.2rem;border-radius:50%;border:3px solid rgba(128,128,128,.25);border-top-color:#2c6bed;animation:s .8s linear infinite}
+  @keyframes s{to{transform:rotate(360deg)}}
+  h1{font-size:1.15rem;margin:.2rem 0 .4rem;font-weight:640} p{color:#77787d;font-size:.92rem;margin:0} a{color:#2c6bed}
+  @media (prefers-reduced-motion:reduce){.sp{animation:none}}
+</style></head><body>
+<div class="box" id="box">
+  <div class="sp"></div>
+  <h1>Waking up ${name}…</h1>
+  <p>This app was paused to save resources. It&rsquo;ll be ready in a moment.</p>
+</div>
+<script>
+(function(){
+  var m=location.hash.match(/w=(\\d+)/), n=m?+m[1]:0;
+  if(n>=20){
+    document.getElementById('box').innerHTML='<h1>Still starting&hellip;</h1>'+
+      '<p>This is taking longer than usual. <a href="'+location.pathname+'">Try again</a>, '+
+      'or ask the owner to redeploy it.</p>';
+    return;
+  }
+  setTimeout(function(){ location.hash='w='+(n+1); location.reload(); },1500);
+})();
+</script></body></html>`;
+  return new NextResponse(html, {
+    status: 200,
+    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+  });
 }
 
 function toAuth(req: NextRequest, slug: string, subPath: string): NextResponse {
@@ -118,6 +158,18 @@ async function gateway(req: NextRequest, ctx: { params: Promise<{ slug: string; 
       return mintGuestSession(slug, subPath, req, project.share_key);
     }
     return toAuth(req, slug, subPath);
+  }
+
+  // Cold start: if a deployed app is asleep (idle, or paused by the concurrency
+  // cap), wake it in the background and show a self-refreshing splash for page
+  // loads — so the visitor sees "waking up…" rather than a hung tab.
+  const wakeable = !!project.app_type && (project.status === "stopped" || project.status === "running");
+  if (wakeable && !appIsLive(project)) {
+    const wantsHtml = req.method === "GET" && (req.headers.get("accept") || "").includes("text/html");
+    if (wantsHtml) {
+      wakeApp(project);
+      return wakingPage(project.name);
+    }
   }
 
   let fresh: Row;
