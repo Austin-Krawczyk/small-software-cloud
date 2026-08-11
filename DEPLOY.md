@@ -151,6 +151,19 @@ journalctl -u small-software-cloud-update -f   # watch what it does
 systemctl disable --now small-software-cloud-update.timer  # turn it off
 ```
 
+**Instant deploys (webhook).** The poll above deploys within ~5 min. For a deploy
+within *seconds* of pushing, add a GitHub webhook:
+
+1. Pick a secret: `openssl rand -hex 32`. Put it in `/etc/small-software-cloud.env`
+   as `SCLOUD_DEPLOY_SECRET=…`, then `systemctl restart small-software-cloud`.
+2. On GitHub → repo **Settings → Webhooks → Add webhook**: Payload URL
+   `https://YOURDOMAIN/api/deploy-hook`, content type `application/json`, the same
+   **Secret**, and choose **Just the push event**.
+
+On push, GitHub calls the signed endpoint, which touches a trigger file that a
+systemd `.path` unit watches — running the same tests-gated `update.sh` as root.
+The web process never needs sudo. The poll timer stays on as a fallback.
+
 - **Backups:** `setup-server.sh` installs a **daily backup timer** that snapshots
   the whole data dir to `/var/backups/small-software-cloud/` (consistent even
   while running — the DB is copied with `VACUUM INTO`), keeping the newest 7.

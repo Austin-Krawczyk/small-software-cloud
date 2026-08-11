@@ -1,0 +1,12 @@
+# Watches the webhook trigger file; when the app touches it (on a GitHub push),
+# systemd runs the update service as root — an instant, privileged deploy from
+# an unprivileged web process. Assumes the default data dir.
+[Unit]
+Description=Deploy Small Software Cloud when the webhook fires
+
+[Path]
+PathModified=/var/lib/small-software-cloud/.deploy-trigger
+Unit=small-software-cloud-update.service
+
+[Install]
+WantedBy=paths.target
