@@ -27,6 +27,11 @@ export const APP_PORT_END = 9500;
 // Lifecycle: apps with no traffic for this long are stopped (scale-to-zero shape).
 export const IDLE_STOP_MS = 30 * 60 * 1000;
 
+// Cap on simultaneously-running app instances (each holds a process + up to
+// 256 MB). When a new app must start at capacity, the least-recently-active one
+// is paused and wakes again on its next request. Sized for the host's RAM.
+export const MAX_RUNNING_APPS = Number(process.env.SCLOUD_MAX_RUNNING_APPS ?? 5);
+
 // Size caps, configurable via env (MB). MAX_UPLOAD gates the uploaded zip;
 // MAX_PROJECT gates the extracted/cloned project on disk.
 export const MAX_UPLOAD_MB = Number(process.env.SCLOUD_MAX_UPLOAD_MB ?? 50);

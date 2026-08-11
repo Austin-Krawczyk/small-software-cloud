@@ -108,7 +108,7 @@ This is what turns "great for trusted teams" into "a public cloud."
 |---|---|
 | 🔜 Deployment history + rollback | Needs build-artifact retention (today builds are ephemeral). |
 | 🔜 Real-time log streaming | Currently 2s polling. |
-| 🔜 Concurrency limits / port-pool management | Cap simultaneous running apps. |
+| ✅ Concurrency cap | Max simultaneously-running apps (`SCLOUD_MAX_RUNNING_APPS`); least-recently-used is paused and wakes on demand, so a spike cold-starts instead of OOM-ing. |
 | 🔜 Broaden test coverage | Unit suite ✅ exists; add integration/deploy-path tests. |
 
 ---

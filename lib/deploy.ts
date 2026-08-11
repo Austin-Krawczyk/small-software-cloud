@@ -16,8 +16,8 @@
 import path from "node:path";
 import fs from "node:fs";
 import {
-  APP_LOGS_DIR, APPDATA_DIR, BUILDS_DIR, HEALTH_TIMEOUT_MS, IDLE_STOP_MS, APP_HOST,
-  appOriginFor, ensureDirs,
+  APP_LOGS_DIR, APPDATA_DIR, BUILDS_DIR, HEALTH_TIMEOUT_MS, IDLE_STOP_MS,
+  MAX_RUNNING_APPS, APP_HOST, appOriginFor, ensureDirs,
 } from "./config";
 import {
   appendDeployLog, all, envMap, getProject, newId, now, one, run, Row, setProject,
@@ -114,6 +114,30 @@ async function runDeployment(projectId: string, depId: string): Promise<void> {
   }
 }
 
+// Pure: given the currently-running process-backed apps (excluding the one about
+// to start) and the cap, return the ids to pause — least-recently-active first —
+// so that after the newcomer starts we're at or under the cap.
+export function pickEvictions(running: { id: string; seen: number }[], cap: number): string[] {
+  const need = running.length + 1 - cap;
+  if (need <= 0) return [];
+  return [...running].sort((a, b) => a.seen - b.seen).slice(0, need).map((r) => r.id);
+}
+
+// Enforce the concurrency cap before starting another instance: pause the
+// least-recently-active running apps to free RAM/ports. Paused apps wake again
+// on their next request (scale-to-zero), so a spike degrades to cold starts
+// instead of OOM.
+async function makeRoomForApp(exceptId: string): Promise<void> {
+  if (MAX_RUNNING_APPS <= 0) return;
+  const running = all(
+    "SELECT id FROM projects WHERE status='running' AND app_type IN ('node','python') AND id != ?",
+    exceptId
+  ).map((r) => ({ id: r.id, seen: lastActivity.get(r.id) ?? 0 }));
+  for (const id of pickEvictions(running, MAX_RUNNING_APPS)) {
+    await stopProject(id);
+  }
+}
+
 async function startInstance(
   project: Row, result: BuildResult, log: (l: string) => void
 ): Promise<{ port: number | null; pid: number | null }> {
@@ -121,6 +145,7 @@ async function startInstance(
     log("✓ Health check passed");
     return { port: null, pid: null };
   }
+  await makeRoomForApp(project.id);
   const port = await freePort();
   const dataDir = appDataDirFor(project.id);
   fs.mkdirSync(dataDir, { recursive: true }); // persists across redeploys
