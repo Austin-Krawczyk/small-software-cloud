@@ -5,6 +5,7 @@ import { STATUS_LABELS } from "@/lib/db";
 import { initPlatform } from "@/lib/deploy";
 import { projectsForUser } from "@/lib/projects";
 import DeployButton from "@/components/DeployButton";
+import AppMenu from "@/components/AppMenu";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,10 @@ export default async function Home() {
           <div className="card project-card" key={p.id}>
             <div className="card-top">
               <h3><Link href={`/projects/${p.id}`}>{p.name}</Link></h3>
-              <span className={`pill pill-${p.status}`}>{STATUS_LABELS[p.status]}</span>
+              <div className="card-top-right">
+                <span className={`pill pill-${p.status}`}>{STATUS_LABELS[p.status]}</span>
+                <AppMenu projectId={p.id} projectName={p.name} isOwner={p.role === "owner"} onDone="refresh" />
+              </div>
             </div>
             {p.description ? <p className="muted">{p.description}</p> : null}
             <p className="app-url">
@@ -43,11 +47,11 @@ export default async function Home() {
             </p>
             <div className="card-actions">
               {p.status === "running" && (
-                <a className="btn btn-sm" href={appOriginFor(p.slug)} target="_blank">Open</a>
+                <a className="btn btn-sm btn-primary" href={appOriginFor(p.slug)} target="_blank">Open</a>
               )}
               {(p.role === "owner" || p.role === "editor") && <DeployButton projectId={p.id} small />}
               <Link className="btn btn-sm" href={`/projects/${p.id}`}>
-                {p.role === "owner" ? "Share" : "Details"}
+                {p.role === "owner" ? "Manage" : "Details"}
               </Link>
             </div>
           </div>

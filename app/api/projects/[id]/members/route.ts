@@ -48,15 +48,24 @@ export async function POST(req: NextRequest, { params }: Params) {
   return NextResponse.json({ ok: true, status, emailed: mailConfigured() });
 }
 
-// Remove a member (body: {user_id}) or a pending invite (body: {email}).
+// Remove someone. body { self: true } → the caller leaves the app; otherwise the
+// owner removes a member ({user_id}) or a pending invite ({email}).
 export async function DELETE(req: NextRequest, { params }: Params) {
   const { id } = await params;
-  const { actor, error } = await requireProject(id, { need: "manage" });
+  const { actor, error } = await requireProject(id); // any member
   if (error) return error;
-  const { user_id, email } = await req.json().catch(() => ({}));
-  if (user_id && user_id !== actor!.project!.owner_id) {
-    run("DELETE FROM project_members WHERE project_id = ? AND user_id = ?", id, user_id);
+  const body = await req.json().catch(() => ({}));
+  const isOwner = actor!.role === "owner";
+
+  if (body.self === true) {
+    if (isOwner) return jsonError(400, "You own this app — delete it instead of leaving.");
+    run("DELETE FROM project_members WHERE project_id = ? AND user_id = ?", id, actor!.user.id);
+    return NextResponse.json({ ok: true, left: true });
   }
-  if (email) run("DELETE FROM invites WHERE project_id = ? AND email = ?", id, email);
+  if (!isOwner) return jsonError(403, "Only the owner can remove other people.");
+  if (body.user_id && body.user_id !== actor!.project!.owner_id) {
+    run("DELETE FROM project_members WHERE project_id = ? AND user_id = ?", id, body.user_id);
+  }
+  if (body.email) run("DELETE FROM invites WHERE project_id = ? AND email = ?", id, body.email);
   return NextResponse.json({ ok: true });
 }
