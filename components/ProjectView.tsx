@@ -149,7 +149,7 @@ export default function ProjectView({ projectId }: { projectId: string }) {
             <>
               <div className="preview-emoji" aria-hidden="true">🚀</div>
               <p><b>Your app is live.</b> TaskiCloud is running it for you.</p>
-              <a className="btn btn-primary" href={detail.app_path} target="_blank" rel="noreferrer">Open app ↗</a>
+              <a className="btn" href={detail.app_path} target="_blank" rel="noreferrer">Open app ↗</a>
             </>
           ) : (
             <>
