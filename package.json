@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:check": "node scripts/build-check.mjs",
     "start": "next start",
     "test": "node --import tsx --test \"test/**/*.test.ts\"",
     "mcp": "node mcp/server.mjs",

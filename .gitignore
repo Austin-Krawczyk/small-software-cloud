@@ -4,3 +4,6 @@ data/
 *.log
 .env*
 *.tsbuildinfo
+
+# throwaway dir for `npm run build:check`
+.next-check/
