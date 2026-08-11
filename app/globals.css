@@ -408,8 +408,38 @@ legend { font-size: 0.9rem; padding: 0 0.4rem; }
 .app-card-actions { display: flex; gap: 0.5rem; margin-top: 0.3rem; }
 
 @media (max-width: 40rem) {
-  .app-header { flex-direction: column; }
   .app-actions { width: 100%; }
   .url-row { flex-wrap: wrap; }
-  .preview-frame { height: 300px; }
 }
+
+/* ============ state-dependent app page ============ */
+.app-page { max-width: 47rem; margin: 0 auto; }
+.app-header { display: block; margin-bottom: 1.6rem; }
+.header-bottom { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: 0.9rem; flex-wrap: wrap; }
+.header-status { display: flex; align-items: center; gap: 0.6rem; }
+
+/* LIVE: share hero */
+.live-headline { font-size: 1.4rem; font-weight: 680; letter-spacing: -0.015em; }
+.share-panel .panel-sub { margin-top: 0.2rem; }
+
+/* NEW: "Add your app" becomes the hero step */
+.source-panel.primary-step {
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line));
+  background: color-mix(in srgb, var(--accent) 3.5%, var(--card));
+  box-shadow: 0 14px 40px -26px color-mix(in srgb, var(--accent) 80%, transparent);
+}
+.source-panel.primary-step > h2 { font-size: 1.3rem; }
+.fail-hint { color: var(--red); font-size: 0.88rem; margin: -0.4rem 0 1.2rem; }
+
+/* preview: short when unpublished, roomier when live */
+.preview-panel.compact .preview-empty { padding: 1.05rem 1.4rem; }
+.preview-panel.compact .win-bar { opacity: 0.85; }
+.preview-panel.prominent .preview-empty { padding: 2.1rem 1.5rem; }
+
+/* BUILDING: simple progress */
+.building-panel { text-align: center; padding: 2.6rem 1.5rem; }
+.building-panel h2 { margin: 0.2rem 0 0; font-size: 1.2rem; }
+.building-panel .panel-sub { margin-top: 0.4rem; }
+.spinner { width: 32px; height: 32px; margin: 0 auto; border: 3px solid var(--gray-bg); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }

@@ -1,19 +1,17 @@
 "use client";
 
 /*
- * App page — redesigned around the thesis: "I have an app, TaskiCloud runs it,
- * I can share it." Hierarchy (top → bottom):
- *   1. Header — name, status chip (Live / Building / Not published), primary
- *      Publish/Update, Open app, Share.
- *   2. Share — the centerpiece. Prominent URL + Copy, and a simple 3-way access
- *      selector (Only me / People I invite / Anyone with the link). Secret
- *      exposure is warned + confirmed before going public.
- *   3. App preview — a live window of the running app (or a clean placeholder).
- *   4. App source — GitHub repo / zip, plainly worded.
- *   5. Advanced settings — CLOSED. Secrets, storage, runtime. "Only if needed."
- *   6. Activity — friendly history ("Published 2m ago · Build successful") with
- *      a "View logs" escape hatch for technical users.
- * No functionality removed — everything is just progressively disclosed.
+ * App page — a three-state experience (ADD → PUBLISH → SHARE):
+ *   NEW/unpublished  → goal is getting the app onto TaskiCloud. Hierarchy:
+ *                      header + "Publish", "Add your app" is the main content,
+ *                      a short secondary preview, advanced collapsed.
+ *   BUILDING         → a simple "Getting your app ready…" progress state; no
+ *                      technical logs by default.
+ *   LIVE             → share-first. "Your app is live", prominent URL + Copy,
+ *                      "Who can use this app?" as the dominant section, and the
+ *                      running-app preview becomes prominent.
+ * Advanced settings (secrets, storage, runtime) stay progressively disclosed.
+ * No functionality removed — only reordered/relabelled per state.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -78,106 +76,107 @@ export default function ProjectView({ projectId }: { projectId: string }) {
     await fetch(`/api/projects/${projectId}/deploy`, { method: "POST" });
     await load();
   }
-  function scrollToShare() {
-    document.getElementById("share")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
 
   if (notFound) return <p className="empty">This app doesn’t exist, or you no longer have access.</p>;
   if (!detail) return <p className="empty muted">Loading…</p>;
 
   const isLive = detail.status === "running" || detail.status === "stopped";
-  const published = detail.status !== "not_deployed";
   const building = detail.status === "building";
+  const failed = detail.status === "failed";
+  const hasSource = detail.source_kind !== "none";
   const chip =
     isLive ? { cls: "live", label: "Live" } :
     building ? { cls: "busy", label: "Building" } :
-    detail.status === "failed" ? { cls: "fail", label: "Build failed" } :
+    failed ? { cls: "fail", label: "Build failed" } :
     { cls: "idle", label: "Not published" };
   const prettyUrl = detail.app_path.replace(/\/$/, "");
 
   return (
     <article className="app-page">
-      {/* 1. HEADER */}
+      {/* HEADER — name, description, then status + state-dependent actions */}
       <header className="app-header">
-        <div className="app-id">
-          <div className="name-line">
-            <InlineText value={detail.name} canEdit={canEdit} className="app-name" as="h1"
-              placeholder="Untitled app" onSave={(v) => { flash("Saved"); patch(projectId, { name: v }, load); }} />
+        <InlineText value={detail.name} canEdit={canEdit} className="app-name" as="h1"
+          placeholder="Untitled app" onSave={(v) => { flash("Saved"); patch(projectId, { name: v }, load); }} />
+        <InlineText value={detail.description} canEdit={canEdit} className="app-tagline"
+          placeholder={canEdit ? "Add a description" : ""} onSave={(v) => { flash("Saved"); patch(projectId, { description: v }, load); }} />
+        <div className="header-bottom">
+          <div className="header-status">
             <span className={`status-chip status-${chip.cls}`}><span className="cdot" aria-hidden="true"></span>{chip.label}</span>
             {flashMsg && <span className="flash" aria-live="polite">{flashMsg}</span>}
           </div>
-          <InlineText value={detail.description} canEdit={canEdit} className="app-tagline"
-            placeholder={canEdit ? "Add a description" : ""} onSave={(v) => { flash("Saved"); patch(projectId, { description: v }, load); }} />
-        </div>
-        <div className="app-actions">
-          {canEdit && (
-            <button className="btn btn-primary" disabled={building} onClick={publish}>
-              {building ? "Publishing…" : published ? "Update" : "Publish"}
-            </button>
-          )}
-          {isLive && <a className="btn" href={detail.app_path} target="_blank" rel="noreferrer">Open app ↗</a>}
-          <button className="btn" onClick={scrollToShare}>Share</button>
-          <AppMenu projectId={projectId} projectName={detail.name} isOwner={canManage} onDone="home" />
+          <div className="app-actions">
+            {isLive ? (
+              <>
+                <a className="btn btn-primary" href={detail.app_path} target="_blank" rel="noreferrer">Open app ↗</a>
+                {canManage && <button className="btn" onClick={() => document.getElementById("share")?.scrollIntoView({ behavior: "smooth" })}>Share</button>}
+                <AppMenu projectId={projectId} projectName={detail.name} isOwner={canManage} onDone="home" />
+              </>
+            ) : (
+              <>
+                {canEdit && (
+                  <button className="btn btn-primary" disabled={building || !hasSource} onClick={publish}
+                    title={!hasSource ? "Add your app below first" : undefined}>
+                    {building ? "Publishing…" : "Publish"}
+                  </button>
+                )}
+                <AppMenu projectId={projectId} projectName={detail.name} isOwner={canManage} onDone="home" />
+              </>
+            )}
+          </div>
         </div>
       </header>
 
-      {/* 2. SHARE — the centerpiece */}
-      <section id="share" className="panel share-panel">
-        <h2>Share your app</h2>
-        {isLive ? (
-          <>
-            <p className="panel-sub">Send this link — it opens the live app.</p>
+      {/* ---------- LIVE: share-first ---------- */}
+      {isLive && (
+        <>
+          <section id="share" className="panel share-panel">
+            <div className="live-headline">🎉 Your app is live</div>
+            <p className="panel-sub">Share this link — it opens the running app.</p>
             <UrlRow url={prettyUrl} />
-          </>
-        ) : (
-          <p className="panel-sub">Publish your app to get a shareable link.</p>
-        )}
-        {canManage
-          ? <AccessControl detail={detail} secrets={env.map((e) => e.key)} onChanged={load} />
-          : <p className="muted tiny">The owner controls who can use this app.</p>}
-      </section>
+            {canManage
+              ? <AccessControl detail={detail} secrets={env.map((e) => e.key)} onChanged={load} />
+              : <p className="muted tiny">The owner controls who can use this app.</p>}
+          </section>
 
-      {/* 3. APP PREVIEW — a clean "app window" (a live embed can't complete the
-          app's auth handoff inside a cross-origin iframe, so we show state + Open). */}
-      <section className="panel preview-panel">
-        <div className="win-bar">
-          <span className={`win-dot ${isLive ? "on" : ""}`} aria-hidden="true"></span>
-          <span className="win-url">{prettyUrl}</span>
-        </div>
-        <div className="preview-empty">
-          {isLive ? (
-            <>
-              <div className="preview-emoji" aria-hidden="true">🚀</div>
-              <p><b>Your app is live.</b> TaskiCloud is running it for you.</p>
-              <a className="btn" href={detail.app_path} target="_blank" rel="noreferrer">Open app ↗</a>
-            </>
-          ) : (
-            <>
-              <div className="preview-emoji" aria-hidden="true">✨</div>
-              <p>{building ? "Publishing your app…" : "Your app will appear here once you publish it."}</p>
-            </>
-          )}
-        </div>
-      </section>
+          <AppWindow prettyUrl={prettyUrl} appPath={detail.app_path} live prominent />
 
-      {/* 4. APP SOURCE + 5. ADVANCED + 6. ACTIVITY */}
-      {canEdit && <AppSource detail={detail} onSaved={() => flash("Saved — press Update to apply.")} />}
+          {canEdit && <AppSource detail={detail} live onSaved={() => flash("Saved — press Update to apply.")} />}
+        </>
+      )}
 
+      {/* ---------- BUILDING: simple progress ---------- */}
+      {building && (
+        <section className="panel building-panel">
+          <div className="spinner" aria-hidden="true"></div>
+          <h2>Getting your app ready…</h2>
+          <p className="panel-sub">TaskiCloud is building and starting your app. This usually takes a few seconds.</p>
+        </section>
+      )}
+
+      {/* ---------- NEW / FAILED: add-your-app-first ---------- */}
+      {!isLive && !building && canEdit && (
+        <>
+          <AppSource detail={detail} live={false} onSaved={() => flash("Added — press Publish to go live.")} />
+          {failed && <p className="fail-hint">The last publish didn’t finish. Check your app above, then Publish again — open Activity for details.</p>}
+          <AppWindow prettyUrl={prettyUrl} appPath={detail.app_path} live={false} prominent={false} />
+        </>
+      )}
+
+      {/* ADVANCED — always secondary, closed */}
       {canEdit && (
         <details className="advanced-panel">
           <summary>Advanced settings <span className="tag">optional</span></summary>
           <div className="advanced-body">
-            <p className="muted dev-intro">Only if your app needs them — TaskiCloud handles everything else automatically.</p>
+            <p className="muted dev-intro">Only configure these if your app needs them. TaskiCloud handles everything else automatically.</p>
             <EnvCard projectId={projectId} vars={env} onChanged={loadEnv} />
             <DatabaseCard projectId={projectId} />
-            <div className="mini-note">
-              <b>Runtime &amp; compute</b> — detected and managed automatically (Node, Python, or a static site). Nothing to configure.
-            </div>
+            <div className="mini-note"><b>Runtime &amp; compute</b> — detected and managed automatically (Node, Python, or a static site). Nothing to configure.</div>
           </div>
         </details>
       )}
 
-      {canEdit && <Activity detail={detail} />}
+      {/* ACTIVITY — lightweight, logs on request */}
+      {canEdit && (detail.latest_deployment || isLive) && <Activity detail={detail} />}
     </article>
   );
 }
@@ -220,8 +219,32 @@ function UrlRow({ url }: { url: string }) {
       <a className="url-text" href={url} target="_blank" rel="noreferrer">{url}</a>
       <button className="btn btn-primary btn-copy" onClick={async () => {
         try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {}
-      }}>{copied ? "Copied!" : "Copy link"}</button>
+      }}>{copied ? "Copied!" : "Copy"}</button>
     </div>
+  );
+}
+
+/* ---------- app window (short when unpublished, prominent when live) ---------- */
+function AppWindow({ prettyUrl, appPath, live, prominent }:
+  { prettyUrl: string; appPath: string; live: boolean; prominent: boolean }) {
+  return (
+    <section className={`panel preview-panel${prominent ? " prominent" : " compact"}`}>
+      <div className="win-bar">
+        <span className={`win-dot ${live ? "on" : ""}`} aria-hidden="true"></span>
+        <span className="win-url">{prettyUrl}</span>
+      </div>
+      <div className="preview-empty">
+        {live ? (
+          <>
+            <div className="preview-emoji" aria-hidden="true">🚀</div>
+            <p><b>Your app is running.</b> TaskiCloud keeps it online for you.</p>
+            <a className="btn" href={appPath} target="_blank" rel="noreferrer">Open app ↗</a>
+          </>
+        ) : (
+          <p className="muted"><b>App preview</b> — publish your app to see it here.</p>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -234,7 +257,6 @@ function initials(name: string, email: string): string {
 function Avatar({ name, email }: { name: string; email: string }) {
   return <span className="avatar" style={{ background: avatarColor(email || name) }} aria-hidden="true">{initials(name, email)}</span>;
 }
-
 const MODES: { key: "me" | "invite" | "anyone"; label: string; hint: string }[] = [
   { key: "me", label: "Only me", hint: "Just you can open it." },
   { key: "invite", label: "People I invite", hint: "Only people you add by email." },
@@ -262,17 +284,10 @@ function AccessControl({ detail, secrets, onChanged }:
     await fetch(`/api/projects/${detail.id}/link`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
     setConfirming(false); loadLink();
   }
-  async function disableLink() {
-    await fetch(`/api/projects/${detail.id}/link`, { method: "DELETE" }); loadLink();
-  }
+  async function disableLink() { await fetch(`/api/projects/${detail.id}/link`, { method: "DELETE" }); loadLink(); }
   async function select(m: "me" | "invite" | "anyone") {
-    if (m === "anyone") {
-      if (secrets.length > 0) { setConfirming(true); return; }
-      await enableLink();
-    } else {
-      setUserMode(m);
-      if (link.enabled) await disableLink();
-    }
+    if (m === "anyone") { if (secrets.length > 0) { setConfirming(true); return; } await enableLink(); }
+    else { setUserMode(m); if (link.enabled) await disableLink(); }
   }
   async function shareWith(email: string, role: string) {
     const r = await fetch(`/api/projects/${detail.id}/members`, {
@@ -300,7 +315,7 @@ function AccessControl({ detail, secrets, onChanged }:
 
   return (
     <div className="access">
-      <div className="access-label">Who can use this</div>
+      <div className="access-label">Who can use this app?</div>
       <div className="access-seg" role="radiogroup" aria-label="Who can use this app">
         {MODES.map((m) => (
           <button key={m.key} type="button" role="radio" aria-checked={eff === m.key}
@@ -375,15 +390,15 @@ function AccessControl({ detail, secrets, onChanged }:
   );
 }
 
-/* ---------- app source ---------- */
-function AppSource({ detail, onSaved }: { detail: Detail; onSaved: () => void }) {
+/* ---------- add your app / app source ---------- */
+function AppSource({ detail, live, onSaved }: { detail: Detail; live: boolean; onSaved: () => void }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const source =
     detail.source_kind === "git" ? `Connected to ${detail.repository_url}` :
     detail.source_kind === "upload" ? "Using your uploaded zip." :
     detail.source_kind === "sample" ? `Started from the “${detail.sample}” template.` :
-    "No code connected yet.";
+    "No app added yet.";
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -404,15 +419,15 @@ function AppSource({ detail, onSaved }: { detail: Detail; onSaved: () => void })
   }
 
   return (
-    <section className="panel source-panel">
-      <h2>App source</h2>
+    <section className={`panel source-panel${live ? "" : " primary-step"}`}>
+      <h2>{live ? "App source" : "Add your app"}</h2>
       <p className="panel-sub">Connect a GitHub repository or upload your app.</p>
       <p className="muted tiny">{source}</p>
       {message && <p className="error tiny">{message}</p>}
       <form onSubmit={submit} className="stack">
         <label>GitHub repository <input name="repository_url" placeholder="https://github.com/you/your-app" /></label>
         <label>…or upload a zip <input type="file" name="code_zip" accept=".zip" /></label>
-        <button className="btn" type="submit" disabled={busy}>{busy ? "Saving…" : "Save"}</button>
+        <button className="btn" type="submit" disabled={busy}>{busy ? "Saving…" : live ? "Save" : "Add app"}</button>
       </form>
     </section>
   );
