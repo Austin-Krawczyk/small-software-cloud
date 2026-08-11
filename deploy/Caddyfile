@@ -22,5 +22,11 @@
 		on_demand
 	}
 	encode zstd gzip
-	reverse_proxy 127.0.0.1:3000
+	reverse_proxy 127.0.0.1:3000 {
+		# The control plane restarts on every platform deploy. Rather than surface
+		# a brief 502, hold the request and retry the upstream for a few seconds so
+		# a deploy looks like a short pause, not an error, to anyone mid-use.
+		lb_try_duration 12s
+		lb_try_interval 250ms
+	}
 }

@@ -164,6 +164,16 @@ On push, GitHub calls the signed endpoint, which touches a trigger file that a
 systemd `.path` unit watches — running the same tests-gated `update.sh` as root.
 The web process never needs sudo. The poll timer stays on as a fallback.
 
+**Deploys and active users.** A platform deploy restarts the control plane (the
+proxy for every app), so there's a ~2–5 s window where it's rebooting. The
+Caddyfile has `lb_try_duration` set so Caddy *holds and retries* during that
+window — a deploy looks like a short pause, not an error. Apps then cold-start on
+their next request (the "waking up" splash). Data persists across the restart.
+`update.sh` doesn't re-copy the Caddyfile, so after changing it:
+```bash
+cp /opt/small-software-cloud/deploy/Caddyfile /etc/caddy/Caddyfile && systemctl reload caddy
+```
+
 - **Backups:** `setup-server.sh` installs a **daily backup timer** that snapshots
   the whole data dir to `/var/backups/small-software-cloud/` (consistent even
   while running — the DB is copied with `VACUUM INTO`), keeping the newest 7.
